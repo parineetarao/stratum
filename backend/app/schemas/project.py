@@ -22,6 +22,7 @@ class ProjectResponse(BaseModel):
     domain: Optional[DomainEnum]
     analysis_mode: Optional[AnalysisMode]
     created_at: datetime
+    updated_at: Optional[datetime]
 
     class Config:
         from_attributes = True

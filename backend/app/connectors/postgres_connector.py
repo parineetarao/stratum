@@ -16,7 +16,10 @@ class PostgresConnector(BaseConnector):
 
     def _get_engine(self):
         if self.engine is None:
-            self.engine = create_engine(self.connection_string)
+            self.engine = create_engine(
+                self.connection_string,
+                connect_args={"connect_timeout": 5}
+            )
         return self.engine
 
     def test_connection(self) -> bool:
@@ -103,6 +106,23 @@ class PostgresConnector(BaseConnector):
             for fk in fks
             if fk["constrained_columns"] and fk["referred_columns"]
         ]
+
+    def get_server_info(self) -> Dict[str, Any]:
+        """Live server metadata for display purposes. Best-effort — callers
+        should tolerate individual fields coming back as None."""
+        with self._get_engine().connect() as conn:
+            version = conn.execute(text("SHOW server_version")).scalar()
+            encoding = conn.execute(text("SHOW server_encoding")).scalar()
+            collation = conn.execute(text("SHOW lc_collate")).scalar()
+            size_bytes = conn.execute(
+                text("SELECT pg_database_size(current_database())")
+            ).scalar()
+            return {
+                "server_version": version,
+                "encoding": encoding,
+                "collation": collation,
+                "database_size_bytes": size_bytes,
+            }
 
     def dispose(self):
         if self.engine:

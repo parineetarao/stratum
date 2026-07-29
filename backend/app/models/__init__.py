@@ -10,3 +10,4 @@ from app.models.kpi import KPI
 from app.models.saved_query import SavedQuery
 from app.models.dashboard_config import DashboardConfig
 from app.models.schema_snapshot import SchemaSnapshot
+from app.models.connection_activity import ConnectionActivity

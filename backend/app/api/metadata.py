@@ -9,6 +9,7 @@ from app.models.schema_metadata import DiscoveredTable, DiscoveredColumn
 from app.models.schema_snapshot import SchemaSnapshot
 from app.models.warehouse import WarehouseDesign
 from app.models.kpi import KPI
+from app.models.connection_activity import ActivityEventType, ActivityStatus, record_activity
 from app.schemas.metadata import SchemaResponse, TableMetadata, ColumnMetadata, ForeignKeyInfo
 from app.schemas.drift import SchemaDriftResponse, DriftChange, AffectedObject
 from app.api.deps import get_current_user
@@ -138,6 +139,13 @@ def discover_metadata(
     )
     db.add(new_snapshot)
     db.commit()
+
+    record_activity(
+        db, project_id,
+        ActivityEventType.metadata_discovered,
+        ActivityStatus.success,
+        f"Discovered {schema['table_count']} table(s)."
+    )
 
     return SchemaResponse(
         project_id=project_id,
@@ -294,6 +302,14 @@ def refresh_schema_with_drift(
                 "New tables or columns detected. Consider regenerating "
                 "warehouse design to include new data."
             )
+
+    record_activity(
+        db, project_id,
+        ActivityEventType.schema_drift_detected if drift["has_changes"] else ActivityEventType.metadata_refreshed,
+        ActivityStatus.success,
+        f"Refreshed metadata — {drift['total_changes']} change(s) detected."
+        if drift["has_changes"] else "Refreshed metadata. No changes detected."
+    )
 
     def to_drift_changes(items: List[Dict]) -> List[DriftChange]:
         return [

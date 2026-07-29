@@ -1,7 +1,31 @@
+import csv
 import duckdb
 import pandas as pd
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, TypedDict
 from app.connectors.base import BaseConnector
+
+
+class CsvDialectInfo(TypedDict):
+    encoding: Optional[str]
+    delimiter: Optional[str]
+
+
+def detect_csv_dialect(file_path: str, sample_bytes: int = 8192) -> CsvDialectInfo:
+    """Best-effort encoding/delimiter detection for display purposes, read
+    from a small prefix of the file rather than the full dataset."""
+    for encoding in ("utf-8", "latin-1"):
+        try:
+            with open(file_path, "r", encoding=encoding) as f:
+                sample = f.read(sample_bytes)
+            try:
+                delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
+            except csv.Error:
+                delimiter = None
+            return {"encoding": encoding, "delimiter": delimiter}
+        except (UnicodeDecodeError, OSError):
+            continue
+    return {"encoding": None, "delimiter": None}
+
 
 class CSVConnector(BaseConnector):
 
