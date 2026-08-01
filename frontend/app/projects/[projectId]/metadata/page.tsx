@@ -1,5 +1,5 @@
-import PlaceholderModule from '@/components/workspace/PlaceholderModule';
+import MetadataExplorer from '@/components/workspace/metadata/MetadataExplorer';
 
 export default function MetadataPage() {
-  return <PlaceholderModule moduleName="Metadata" />;
+  return <MetadataExplorer />;
 }

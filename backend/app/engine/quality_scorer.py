@@ -156,6 +156,89 @@ def flag_issues(tables: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return issues
 
 
+def table_status_label(score: int) -> str:
+    if score >= 90:
+        return "Healthy"
+    if score >= 80:
+        return "Warning"
+    if score >= 60:
+        return "Needs Review"
+    return "Critical"
+
+
+def score_tables(tables: List[Dict[str, Any]], issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    issue_counts: Dict[str, int] = {}
+    for issue in issues:
+        issue_counts[issue["table"]] = issue_counts.get(issue["table"], 0) + 1
+
+    results = []
+    for table in tables:
+        completeness = compute_completeness_score([table])
+        uniqueness = compute_uniqueness_score([table])
+        consistency = compute_consistency_score([table])
+        overall = compute_overall_score(completeness, uniqueness, consistency)
+        results.append({
+            "table_name": table["table_name"],
+            "score": overall,
+            "status": table_status_label(overall),
+            "issue_count": issue_counts.get(table["table_name"], 0)
+        })
+
+    return sorted(results, key=lambda t: t["score"])
+
+
+def compute_potential_score(tables: List[Dict[str, Any]]) -> int:
+    adjusted_tables = []
+    for table in tables:
+        adjusted_columns = [
+            {**col, "null_percentage": 0.0, "suspected_type_mismatch": False}
+            for col in table["columns"]
+        ]
+        adjusted_tables.append({
+            **table,
+            "duplicate_percentage": 0.0,
+            "columns": adjusted_columns
+        })
+
+    completeness = compute_completeness_score(adjusted_tables)
+    uniqueness = compute_uniqueness_score(adjusted_tables)
+    consistency = compute_consistency_score(adjusted_tables)
+    return compute_overall_score(completeness, uniqueness, consistency)
+
+
+def summarize_issue_impact(tables: List[Dict[str, Any]], issues: List[Dict[str, Any]]) -> Dict[str, Any]:
+    table_lookup = {t["table_name"]: t for t in tables}
+
+    duplicate_tables = {i["table"] for i in issues if i["issue_type"] == "duplicate_rows"}
+    duplicate_records = sum(
+        table_lookup[t]["duplicate_count"] for t in duplicate_tables if t in table_lookup
+    )
+
+    missing_value_issues = [i for i in issues if i["issue_type"] == "high_null_rate"]
+    missing_value_tables = {i["table"] for i in missing_value_issues}
+    missing_values = 0
+    for issue in missing_value_issues:
+        table = table_lookup.get(issue["table"], {})
+        col = next(
+            (c for c in table.get("columns", []) if c["column_name"] == issue["column"]),
+            None
+        )
+        if col:
+            missing_values += col["null_count"]
+
+    invalid_format_issues = [i for i in issues if i["issue_type"] == "type_mismatch"]
+    invalid_format_tables = {i["table"] for i in invalid_format_issues}
+
+    return {
+        "duplicate_records": duplicate_records,
+        "duplicate_tables": len(duplicate_tables),
+        "missing_values": missing_values,
+        "missing_value_tables": len(missing_value_tables),
+        "invalid_formats": len(invalid_format_issues),
+        "invalid_format_tables": len(invalid_format_tables)
+    }
+
+
 def score_profile(tables: List[Dict[str, Any]]) -> Dict[str, Any]:
     completeness = compute_completeness_score(tables)
     uniqueness = compute_uniqueness_score(tables)
@@ -174,5 +257,8 @@ def score_profile(tables: List[Dict[str, Any]]) -> Dict[str, Any]:
         "total_issues": len(issues),
         "critical_issues": critical_count,
         "warning_issues": warning_count,
-        "issues": issues
+        "issues": issues,
+        "table_scores": score_tables(tables, issues),
+        "potential_score": compute_potential_score(tables),
+        "issue_impact": summarize_issue_impact(tables, issues)
     }

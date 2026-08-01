@@ -1,16 +1,16 @@
+import csv
+import io
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
 from app.models.profiling import ProfilingRun, ColumnProfile
-from app.models.cleaning import CleaningRecommendation, CleaningStatus
-from app.schemas.quality import QualityReportResponse, QualityIssue
-from app.schemas.cleaning import (
-    CleaningRecommendationResponse,
-    CleaningDecision,
-    CleaningListResponse
+from app.models.cleaning import CleaningRecommendation
+from app.schemas.quality import (
+    QualityReportResponse, QualityIssue, TableQualityScore, IssueImpactSummary
 )
 from app.api.deps import get_current_user
 from app.engine.quality_scorer import score_profile
@@ -91,7 +91,8 @@ def generate_quality_report(
             reason=rec.get("reason"),
             expected_impact=rec.get("expected_impact"),
             confidence=rec.get("confidence"),
-            sql_hint=rec.get("sql_hint")
+            sql_hint=rec.get("sql_hint"),
+            sandbox_sql=rec.get("sandbox_sql")
         )
         db.add(db_rec)
     db.commit()
@@ -99,14 +100,18 @@ def generate_quality_report(
     return QualityReportResponse(
         project_id=project_id,
         run_id=run.id,
+        profiled_at=run.created_at,
         overall_score=report["overall_score"],
         completeness_score=report["completeness_score"],
         uniqueness_score=report["uniqueness_score"],
         consistency_score=report["consistency_score"],
+        potential_score=report["potential_score"],
         total_issues=report["total_issues"],
         critical_issues=report["critical_issues"],
         warning_issues=report["warning_issues"],
-        issues=[QualityIssue(**i) for i in report["issues"]]
+        issues=[QualityIssue(**i) for i in report["issues"]],
+        table_scores=[TableQualityScore(**t) for t in report["table_scores"]],
+        issue_impact=IssueImpactSummary(**report["issue_impact"])
     )
 
 
@@ -135,20 +140,23 @@ def get_quality_report(
     return QualityReportResponse(
         project_id=project_id,
         run_id=run.id,
+        profiled_at=run.created_at,
         overall_score=report["overall_score"],
         completeness_score=report["completeness_score"],
         uniqueness_score=report["uniqueness_score"],
         consistency_score=report["consistency_score"],
+        potential_score=report["potential_score"],
         total_issues=report["total_issues"],
         critical_issues=report["critical_issues"],
         warning_issues=report["warning_issues"],
-        issues=[QualityIssue(**i) for i in report["issues"]]
+        issues=[QualityIssue(**i) for i in report["issues"]],
+        table_scores=[TableQualityScore(**t) for t in report["table_scores"]],
+        issue_impact=IssueImpactSummary(**report["issue_impact"])
     )
 
 
-@router.get("/{project_id}/cleaning-recommendations",
-            response_model=CleaningListResponse)
-def get_cleaning_recommendations(
+@router.get("/{project_id}/quality-report/export")
+def export_quality_report(
     project_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -160,55 +168,44 @@ def get_cleaning_recommendations(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    recs = db.query(CleaningRecommendation).filter(
-        CleaningRecommendation.project_id == project_id
-    ).all()
+    run = db.query(ProfilingRun).filter(
+        ProfilingRun.project_id == project_id
+    ).order_by(ProfilingRun.created_at.desc()).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="No profiling run found")
 
-    if not recs:
-        raise HTTPException(
-            status_code=404,
-            detail="No cleaning recommendations found. Generate quality report first."
-        )
+    tables = load_profiling_tables(run.id, db)
+    report = score_profile(tables)
 
-    return CleaningListResponse(
-        project_id=project_id,
-        total=len(recs),
-        pending=sum(1 for r in recs if r.status == CleaningStatus.pending),
-        approved=sum(1 for r in recs if r.status == CleaningStatus.approved),
-        rejected=sum(1 for r in recs if r.status == CleaningStatus.rejected),
-        recommendations=recs
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+
+    writer.writerow(["Data Quality Report", project.name])
+    writer.writerow(["Profiled At", run.created_at.isoformat()])
+    writer.writerow(["Overall Score", report["overall_score"]])
+    writer.writerow(["Completeness", report["completeness_score"]])
+    writer.writerow(["Consistency", report["consistency_score"]])
+    writer.writerow(["Uniqueness", report["uniqueness_score"]])
+    writer.writerow([])
+
+    writer.writerow(["Table Health Ranking"])
+    writer.writerow(["Table", "Score", "Status", "Issue Count"])
+    for t in report["table_scores"]:
+        writer.writerow([t["table_name"], t["score"], t["status"], t["issue_count"]])
+    writer.writerow([])
+
+    writer.writerow(["Issues"])
+    writer.writerow(["Severity", "Table", "Column", "Issue Type", "Description", "Metric"])
+    for i in report["issues"]:
+        writer.writerow([
+            i["severity"], i["table"], i.get("column") or "",
+            i["issue_type"], i["description"], i.get("metric") or ""
+        ])
+
+    buffer.seek(0)
+    filename = f"quality-report-{project_id}.csv"
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
-
-
-@router.patch(
-    "/{project_id}/cleaning-recommendations/{rec_id}/decide",
-    response_model=CleaningRecommendationResponse
-)
-def decide_cleaning_recommendation(
-    project_id: int,
-    rec_id: int,
-    decision: CleaningDecision,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    rec = db.query(CleaningRecommendation).filter(
-        CleaningRecommendation.id == rec_id,
-        CleaningRecommendation.project_id == project_id
-    ).first()
-    if not rec:
-        raise HTTPException(
-            status_code=404,
-            detail="Recommendation not found"
-        )
-
-    rec.status = decision.status
-    db.commit()
-    db.refresh(rec)
-    return rec

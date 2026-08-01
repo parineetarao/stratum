@@ -1,5 +1,10 @@
-import PlaceholderModule from '@/components/workspace/PlaceholderModule';
+import { Suspense } from 'react';
+import SqlWorkspaceExplorer from '@/components/workspace/sql-workspace/SqlWorkspaceExplorer';
 
 export default function SqlWorkspacePage() {
-  return <PlaceholderModule moduleName="SQL Workspace" />;
+  return (
+    <Suspense fallback={null}>
+      <SqlWorkspaceExplorer />
+    </Suspense>
+  );
 }

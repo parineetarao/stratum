@@ -271,6 +271,80 @@ export async function refreshSchema(projectId: number): Promise<SchemaDriftRespo
   return data;
 }
 
+export async function getSchema(projectId: number): Promise<SchemaResponse> {
+  const { data } = await apiClient.get<SchemaResponse>(`/projects/${projectId}/schema`);
+  return data;
+}
+
+export interface SchemaSummary {
+  name: string;
+  table_count: number;
+  is_source_schema: boolean;
+}
+
+export interface CatalogTableSummary {
+  table_name: string;
+  schema_name: string;
+  row_count: number;
+  column_count: number;
+  last_updated: string | null;
+}
+
+export interface CatalogOverview {
+  project_id: number;
+  source_type: ConnectionType;
+  source_schema: string;
+  schema_count: number;
+  table_count: number;
+  column_count: number;
+  total_rows_approx: number;
+  schemas: SchemaSummary[];
+  tables: CatalogTableSummary[];
+  last_refreshed_at: string | null;
+}
+
+export async function getMetadataCatalog(projectId: number): Promise<CatalogOverview> {
+  const { data } = await apiClient.get<CatalogOverview>(`/projects/${projectId}/catalog`);
+  return data;
+}
+
+export interface IndexInfo {
+  name: string;
+  columns: string[];
+  is_unique: boolean;
+  is_primary: boolean;
+}
+
+export interface ConstraintInfo {
+  name: string;
+  type: string;
+  definition: string;
+}
+
+export interface TableDetail {
+  table_name: string;
+  schema_name: string;
+  row_count: number;
+  column_count: number;
+  columns: ColumnMetadata[];
+  data_size_bytes: number | null;
+  primary_key: string[];
+  indexes: IndexInfo[];
+  index_count: number;
+  constraints: ConstraintInfo[];
+  constraint_count: number;
+  last_analyzed_at: string | null;
+  sample_data: Record<string, unknown>[];
+  ddl: string;
+}
+
+export async function getCatalogTableDetail(projectId: number, tableName: string): Promise<TableDetail> {
+  const { data } = await apiClient.get<TableDetail>(
+    `/projects/${projectId}/catalog/tables/${encodeURIComponent(tableName)}`
+  );
+  return data;
+}
+
 export type StageStatus = 'completed' | 'requires_review' | 'in_progress' | 'pending';
 export type ProjectStatus = 'setup_incomplete' | 'active' | 'needs_review' | 'completed';
 
@@ -444,6 +518,456 @@ export async function getDataSourceActivity(projectId: number, limit = 50): Prom
   const { data } = await apiClient.get<ActivityLogEntry[]>(`/projects/${projectId}/data-source/activity`, {
     params: { limit },
   });
+  return data;
+}
+
+export type ConfidenceTier = 'high' | 'medium' | 'low';
+export type RelationshipStatus = 'auto_accepted' | 'pending' | 'accepted' | 'rejected';
+
+export interface RelationshipExplanation {
+  reasons?: string[];
+  signals?: Record<string, boolean>;
+  raw_scores?: Record<string, number>;
+}
+
+export interface RelationshipResponse {
+  id: number;
+  project_id: number;
+  from_table: string;
+  from_column: string;
+  to_table: string;
+  to_column: string;
+  name_similarity_score: number;
+  value_overlap_score: number;
+  confidence_score: number;
+  confidence_tier: ConfidenceTier;
+  explanation: RelationshipExplanation | null;
+  status: RelationshipStatus;
+}
+
+export interface RelationshipListResponse {
+  project_id: number;
+  total_inferred: number;
+  auto_accepted: number;
+  pending_review: number;
+  relationships: RelationshipResponse[];
+}
+
+export async function inferRelationships(projectId: number): Promise<RelationshipListResponse> {
+  const { data } = await apiClient.post<RelationshipListResponse>(`/projects/${projectId}/infer-relationships`);
+  return data;
+}
+
+export async function getRelationships(projectId: number): Promise<RelationshipListResponse> {
+  const { data } = await apiClient.get<RelationshipListResponse>(`/projects/${projectId}/relationships`);
+  return data;
+}
+
+export async function decideRelationship(
+  projectId: number,
+  relationshipId: number,
+  status: RelationshipStatus
+): Promise<RelationshipResponse> {
+  const { data } = await apiClient.patch<RelationshipResponse>(
+    `/projects/${projectId}/relationships/${relationshipId}/decide`,
+    { status }
+  );
+  return data;
+}
+
+export async function bulkAcceptRelationships(projectId: number): Promise<RelationshipListResponse> {
+  const { data } = await apiClient.post<RelationshipListResponse>(
+    `/projects/${projectId}/relationships/bulk-accept`
+  );
+  return data;
+}
+
+export type IssueSeverity = 'critical' | 'warning';
+
+export interface QualityIssue {
+  severity: IssueSeverity;
+  table: string;
+  column: string | null;
+  issue_type: string;
+  description: string;
+  metric: number | null;
+}
+
+export interface TableQualityScore {
+  table_name: string;
+  score: number;
+  status: string;
+  issue_count: number;
+}
+
+export interface IssueImpactSummary {
+  duplicate_records: number;
+  duplicate_tables: number;
+  missing_values: number;
+  missing_value_tables: number;
+  invalid_formats: number;
+  invalid_format_tables: number;
+}
+
+export interface QualityReportResponse {
+  project_id: number;
+  run_id: number;
+  profiled_at: string;
+  overall_score: number;
+  completeness_score: number;
+  uniqueness_score: number;
+  consistency_score: number;
+  potential_score: number;
+  total_issues: number;
+  critical_issues: number;
+  warning_issues: number;
+  issues: QualityIssue[];
+  table_scores: TableQualityScore[];
+  issue_impact: IssueImpactSummary;
+}
+
+export async function generateQualityReport(projectId: number): Promise<QualityReportResponse> {
+  const { data } = await apiClient.post<QualityReportResponse>(`/projects/${projectId}/quality-report`);
+  return data;
+}
+
+export async function getQualityReport(projectId: number): Promise<QualityReportResponse> {
+  const { data } = await apiClient.get<QualityReportResponse>(`/projects/${projectId}/quality-report`);
+  return data;
+}
+
+export async function exportQualityReport(projectId: number): Promise<Blob> {
+  const { data } = await apiClient.get(`/projects/${projectId}/quality-report/export`, {
+    responseType: 'blob',
+  });
+  return data;
+}
+
+export interface ProfilingResponse {
+  project_id: number;
+  run_id: number;
+  table_count: number;
+  total_columns_profiled: number;
+}
+
+export async function runProfiling(projectId: number): Promise<ProfilingResponse> {
+  const { data } = await apiClient.post<ProfilingResponse>(`/projects/${projectId}/profile`);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Sandbox
+// ---------------------------------------------------------------------------
+
+export interface SandboxExecuteResponse {
+  project_id: number;
+  success: boolean;
+  message: string;
+  tables_loaded: string[];
+}
+
+export interface SandboxRefreshResponse {
+  project_id: number;
+  refreshed_tables: string[];
+  timestamp: string;
+}
+
+export interface SandboxStatusResponse {
+  project_id: number;
+  initialized: boolean;
+  source_tables: string[];
+  warehouse_tables: string[];
+  has_warehouse: boolean;
+  total_rows: number | null;
+  last_synced_at: string | null;
+}
+
+export async function initializeSandbox(projectId: number): Promise<SandboxExecuteResponse> {
+  const { data } = await apiClient.post<SandboxExecuteResponse>(`/projects/${projectId}/sandbox/initialize`);
+  return data;
+}
+
+export async function refreshSandbox(projectId: number): Promise<SandboxRefreshResponse> {
+  const { data } = await apiClient.post<SandboxRefreshResponse>(`/projects/${projectId}/sandbox/refresh`);
+  return data;
+}
+
+export async function getSandboxStatus(projectId: number): Promise<SandboxStatusResponse> {
+  const { data } = await apiClient.get<SandboxStatusResponse>(`/projects/${projectId}/sandbox/status`);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Cleaning
+// ---------------------------------------------------------------------------
+
+export type CleaningConfidence = 'high' | 'medium' | 'low';
+export type CleaningStatus = 'pending' | 'approved' | 'rejected';
+
+export interface CleaningRecommendation {
+  id: number;
+  project_id: number;
+  operation: string;
+  table_name: string;
+  column_name: string | null;
+  reason: string | null;
+  expected_impact: string | null;
+  confidence: CleaningConfidence | null;
+  sql_hint: string | null;
+  sandbox_sql: string | null;
+  status: CleaningStatus;
+  applied: boolean;
+  applied_at: string | null;
+  execution_error: string | null;
+}
+
+export interface CleaningListResponse {
+  project_id: number;
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  recommendations: CleaningRecommendation[];
+}
+
+export type CleaningBulkAction = 'approve_high_confidence' | 'reject_low_confidence' | 'reset_all';
+
+export interface CleaningPreviewResult {
+  recommendation_id: number;
+  operation: string;
+  table_name: string;
+  column_name: string | null;
+  before: number;
+  after: number;
+  error: string | null;
+}
+
+export interface CleaningPreviewResponse {
+  project_id: number;
+  results: CleaningPreviewResult[];
+}
+
+export interface CleaningApplyResult {
+  recommendation_id: number;
+  success: boolean;
+  error: string | null;
+}
+
+export interface CleaningApplyResponse {
+  project_id: number;
+  results: CleaningApplyResult[];
+  applied_count: number;
+  failed_count: number;
+}
+
+export async function getCleaningRecommendations(projectId: number): Promise<CleaningListResponse> {
+  const { data } = await apiClient.get<CleaningListResponse>(`/projects/${projectId}/cleaning-recommendations`);
+  return data;
+}
+
+export async function decideCleaningRecommendation(
+  projectId: number,
+  recId: number,
+  status: CleaningStatus
+): Promise<CleaningRecommendation> {
+  const { data } = await apiClient.patch<CleaningRecommendation>(
+    `/projects/${projectId}/cleaning-recommendations/${recId}/decide`,
+    { status }
+  );
+  return data;
+}
+
+export async function bulkDecideCleaningRecommendations(
+  projectId: number,
+  action: CleaningBulkAction
+): Promise<CleaningListResponse> {
+  const { data } = await apiClient.post<CleaningListResponse>(
+    `/projects/${projectId}/cleaning-recommendations/bulk-decide`,
+    { action }
+  );
+  return data;
+}
+
+export async function previewCleaning(projectId: number): Promise<CleaningPreviewResponse> {
+  const { data } = await apiClient.post<CleaningPreviewResponse>(`/projects/${projectId}/cleaning/preview`);
+  return data;
+}
+
+export async function applyCleaningRecommendations(
+  projectId: number,
+  recommendationIds?: number[]
+): Promise<CleaningApplyResponse> {
+  const { data } = await apiClient.post<CleaningApplyResponse>(`/projects/${projectId}/cleaning/apply`, {
+    recommendation_ids: recommendationIds ?? null,
+  });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// SQL Workspace
+// ---------------------------------------------------------------------------
+
+export type SqlEnvironment = 'source' | 'warehouse';
+
+export interface SQLExecuteResponse {
+  success: boolean;
+  columns: string[];
+  rows: unknown[][];
+  row_count: number;
+  execution_time_ms: number | null;
+  error: string | null;
+}
+
+export async function executeSql(
+  projectId: number,
+  sql: string,
+  environment: SqlEnvironment = 'source'
+): Promise<SQLExecuteResponse> {
+  const { data } = await apiClient.post<SQLExecuteResponse>(`/projects/${projectId}/sql/execute`, {
+    sql,
+    environment,
+  });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Warehouse
+// ---------------------------------------------------------------------------
+
+export interface MeasureColumn {
+  column_name: string;
+  data_type: string;
+  suggested_aggregations: string[];
+}
+
+export interface WarehouseDimensionColumn {
+  column_name: string;
+  data_type: string;
+  is_date: boolean;
+  is_descriptive: boolean;
+}
+
+export interface WarehouseForeignKey {
+  column_name: string;
+  references_table: string;
+  references_warehouse_table: string;
+  references_column: string | null;
+}
+
+export interface FactTableDesign {
+  source_table: string;
+  warehouse_table: string;
+  fact_score: number;
+  measures: MeasureColumn[];
+  dimensions: WarehouseDimensionColumn[];
+  foreign_keys: WarehouseForeignKey[];
+  primary_key: string[];
+  row_count: number;
+  ddl: string;
+  classification_reasons: string[];
+}
+
+export interface DimensionTableDesign {
+  source_table: string;
+  warehouse_table: string;
+  attributes: WarehouseDimensionColumn[];
+  foreign_keys: WarehouseForeignKey[];
+  primary_key: string[];
+  row_count: number;
+  ddl: string;
+  classification_reasons: string[];
+}
+
+export type WarehouseSchemaType = 'star' | 'snowflake';
+
+export interface WarehouseDesignResponse {
+  project_id: number;
+  design_id: number;
+  schema_type: WarehouseSchemaType;
+  fact_count: number;
+  dimension_count: number;
+  fact_tables: FactTableDesign[];
+  dimension_tables: DimensionTableDesign[];
+  full_ddl: string;
+  full_ddl_postgres: string | null;
+  full_ddl_duckdb: string | null;
+  is_approved: boolean;
+}
+
+export async function generateWarehouseDesign(projectId: number): Promise<WarehouseDesignResponse> {
+  const { data } = await apiClient.post<WarehouseDesignResponse>(`/projects/${projectId}/warehouse-design`);
+  return data;
+}
+
+export async function getWarehouseDesign(projectId: number): Promise<WarehouseDesignResponse> {
+  const { data } = await apiClient.get<WarehouseDesignResponse>(`/projects/${projectId}/warehouse-design`);
+  return data;
+}
+
+export async function approveWarehouseDesign(
+  projectId: number,
+  isApproved: boolean
+): Promise<WarehouseDesignResponse> {
+  const { data } = await apiClient.patch<WarehouseDesignResponse>(
+    `/projects/${projectId}/warehouse-design/approve`,
+    { is_approved: isApproved }
+  );
+  return data;
+}
+
+export type WarehouseClassification = 'fact' | 'dimension';
+
+export async function overrideWarehouseClassification(
+  projectId: number,
+  tableName: string,
+  classification: WarehouseClassification
+): Promise<WarehouseDesignResponse> {
+  const { data } = await apiClient.patch<WarehouseDesignResponse>(
+    `/projects/${projectId}/warehouse-design/classify`,
+    { table_name: tableName, classification }
+  );
+  return data;
+}
+
+export interface WarehouseTableResult {
+  table_name: string;
+  row_count: number | null;
+}
+
+export type ValidationStatus = 'passed' | 'warning' | 'error';
+
+export interface JoinValidation {
+  fact_table: string;
+  dimension_table: string;
+  foreign_key_column: string;
+  orphan_count: number | null;
+  status: ValidationStatus;
+  error: string | null;
+}
+
+export interface AggregationValidation {
+  table: string;
+  column: string;
+  aggregation: string;
+  result: number | null;
+  status: 'passed' | 'error';
+  error: string | null;
+}
+
+export interface WarehousePreviewResponse {
+  project_id: number;
+  status: 'success' | 'warning' | 'failed';
+  sandbox_initialized: boolean;
+  tables_created: WarehouseTableResult[];
+  join_validations: JoinValidation[];
+  aggregation_validations: AggregationValidation[];
+  execution_time_ms: number;
+}
+
+export async function previewWarehouse(projectId: number): Promise<WarehousePreviewResponse> {
+  const { data } = await apiClient.post<WarehousePreviewResponse>(
+    `/projects/${projectId}/warehouse-design/preview`
+  );
   return data;
 }
 

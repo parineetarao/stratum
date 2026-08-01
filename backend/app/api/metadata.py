@@ -12,13 +12,19 @@ from app.models.kpi import KPI
 from app.models.connection_activity import ActivityEventType, ActivityStatus, record_activity
 from app.schemas.metadata import SchemaResponse, TableMetadata, ColumnMetadata, ForeignKeyInfo
 from app.schemas.drift import SchemaDriftResponse, DriftChange, AffectedObject
+from app.schemas.metadata_catalog import (
+    CatalogOverview, SchemaSummary, CatalogTableSummary,
+    TableDetailResponse, IndexInfo, ConstraintInfo
+)
 from app.api.deps import get_current_user
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector
 from app.engine.metadata_discovery import discover_schema
 from app.engine.schema_drift import compute_drift, identify_affected_objects
+from app.engine.metadata_catalog import build_ddl
 from datetime import datetime
 from typing import List, Dict
+import os
 
 router = APIRouter(prefix="/projects", tags=["Metadata"])
 
@@ -409,4 +415,183 @@ def get_schema(
         project_id=project_id,
         table_count=len(tables),
         tables=result
+    )
+
+
+@router.get("/{project_id}/catalog", response_model=CatalogOverview)
+def get_metadata_catalog(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Normalized data-catalog overview (schemas + tables) for the Metadata
+    page. Backed by persisted discovery results — run discovery first.
+    """
+    project, connection = get_project_and_connection(
+        project_id, current_user.id, db
+    )
+
+    tables = db.query(DiscoveredTable).filter(
+        DiscoveredTable.project_id == project_id
+    ).order_by(DiscoveredTable.table_name).all()
+
+    if not tables:
+        raise HTTPException(
+            status_code=404,
+            detail="No schema discovered yet. Run discovery first."
+        )
+
+    is_csv = connection.connection_type in (ConnectionType.csv, ConnectionType.excel)
+    source_schema = "dataset" if is_csv else (connection.source_schema or "public")
+
+    total_columns = sum(t.column_count or 0 for t in tables)
+    total_rows = sum(t.row_count or 0 for t in tables)
+
+    latest_snapshot = db.query(SchemaSnapshot).filter(
+        SchemaSnapshot.project_id == project_id
+    ).order_by(SchemaSnapshot.created_at.desc()).first()
+
+    schemas = [SchemaSummary(name=source_schema, table_count=len(tables), is_source_schema=True)]
+
+    if not is_csv:
+        try:
+            connector = PostgresConnector(
+                connection.connection_string,
+                source_schema=connection.source_schema or "public"
+            )
+            try:
+                available = connector.get_available_schemas()
+                for schema_name in available:
+                    if schema_name == source_schema:
+                        continue
+                    try:
+                        count = len(connector.get_tables_for_schema(schema_name))
+                    except Exception:
+                        count = None
+                    schemas.append(SchemaSummary(
+                        name=schema_name,
+                        table_count=count or 0,
+                        is_source_schema=False,
+                    ))
+            finally:
+                connector.dispose()
+        except Exception:
+            pass
+
+    table_summaries = [
+        CatalogTableSummary(
+            table_name=t.table_name,
+            schema_name=source_schema,
+            row_count=t.row_count or 0,
+            column_count=t.column_count or 0,
+            last_updated=t.created_at,
+        )
+        for t in tables
+    ]
+
+    return CatalogOverview(
+        project_id=project_id,
+        source_type=connection.connection_type,
+        source_schema=source_schema,
+        schema_count=len(schemas),
+        table_count=len(tables),
+        column_count=total_columns,
+        total_rows_approx=total_rows,
+        schemas=schemas,
+        tables=table_summaries,
+        last_refreshed_at=latest_snapshot.created_at if latest_snapshot else None,
+    )
+
+
+@router.get("/{project_id}/catalog/tables/{table_name}", response_model=TableDetailResponse)
+def get_catalog_table_detail(
+    project_id: int,
+    table_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Full detail for a single table: columns (persisted), plus best-effort
+    live indexes/constraints/sample rows/size/DDL from the source connector.
+    """
+    project, connection = get_project_and_connection(
+        project_id, current_user.id, db
+    )
+
+    db_table = db.query(DiscoveredTable).filter(
+        DiscoveredTable.project_id == project_id,
+        DiscoveredTable.table_name == table_name,
+    ).first()
+    if not db_table:
+        raise HTTPException(
+            status_code=404,
+            detail="Table not found. Run discovery first."
+        )
+
+    db_columns = db.query(DiscoveredColumn).filter(
+        DiscoveredColumn.table_id == db_table.id
+    ).all()
+
+    is_csv = connection.connection_type in (ConnectionType.csv, ConnectionType.excel)
+    schema_name = "dataset" if is_csv else (connection.source_schema or "public")
+
+    column_metas = [
+        ColumnMetadata(
+            name=c.column_name,
+            type=c.data_type,
+            nullable=c.is_nullable,
+            is_primary_key=c.is_primary_key,
+            foreign_key=ForeignKeyInfo(**c.foreign_key_info) if c.foreign_key_info else None,
+        )
+        for c in db_columns
+    ]
+
+    indexes: List[IndexInfo] = []
+    constraints: List[ConstraintInfo] = []
+    sample_data: List[Dict] = []
+    data_size_bytes = None
+    last_analyzed_at = None
+
+    connector = get_connector(connection)
+    try:
+        indexes = [IndexInfo(**i) for i in connector.get_indexes(table_name)]
+        constraints = [ConstraintInfo(**c) for c in connector.get_constraints(table_name)]
+        sample_data = connector.get_sample_rows(table_name, limit=5)
+        if isinstance(connector, PostgresConnector):
+            data_size_bytes = connector.get_table_size_bytes(table_name)
+            last_analyzed_at = connector.get_last_analyzed(table_name)
+        elif connection.file_path and os.path.exists(connection.file_path):
+            data_size_bytes = os.path.getsize(connection.file_path)
+    except Exception:
+        pass
+    finally:
+        if hasattr(connector, 'dispose'):
+            connector.dispose()
+
+    ddl = build_ddl(
+        table_name=table_name,
+        columns=[
+            {"name": c.column_name, "type": c.data_type, "nullable": c.is_nullable}
+            for c in db_columns
+        ],
+        primary_keys=db_table.primary_keys or [],
+        foreign_keys=db_table.foreign_keys or [],
+    )
+
+    return TableDetailResponse(
+        table_name=table_name,
+        schema_name=schema_name,
+        row_count=db_table.row_count or 0,
+        column_count=db_table.column_count or 0,
+        columns=column_metas,
+        data_size_bytes=data_size_bytes,
+        primary_key=db_table.primary_keys or [],
+        indexes=indexes,
+        index_count=len(indexes),
+        constraints=constraints,
+        constraint_count=len(constraints),
+        last_analyzed_at=last_analyzed_at,
+        sample_data=sample_data,
+        ddl=ddl,
     )

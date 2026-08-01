@@ -21,6 +21,8 @@ class SandboxStatusResponse(BaseModel):
     source_tables: List[str]
     warehouse_tables: List[str]
     has_warehouse: bool
+    total_rows: Optional[int] = None
+    last_synced_at: Optional[str] = None
 
 
 class SandboxScheduleRequest(BaseModel):

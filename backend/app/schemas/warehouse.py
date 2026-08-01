@@ -16,12 +16,21 @@ class DimensionColumn(BaseModel):
     is_descriptive: bool
 
 
+class ForeignKeyRef(BaseModel):
+    column_name: str
+    references_table: str
+    references_warehouse_table: str
+    references_column: Optional[str] = None
+
+
 class FactTableDesign(BaseModel):
     source_table: str
     warehouse_table: str
     fact_score: float
     measures: List[MeasureColumn]
     dimensions: List[DimensionColumn]
+    foreign_keys: List[ForeignKeyRef] = []
+    primary_key: List[str] = []
     row_count: int
     ddl: str
     classification_reasons: List[str]
@@ -31,6 +40,8 @@ class DimensionTableDesign(BaseModel):
     source_table: str
     warehouse_table: str
     attributes: List[DimensionColumn]
+    foreign_keys: List[ForeignKeyRef] = []
+    primary_key: List[str] = []
     row_count: int
     ddl: str
     classification_reasons: List[str]
@@ -55,3 +66,41 @@ class WarehouseDesignResponse(BaseModel):
 
 class WarehouseApproval(BaseModel):
     is_approved: bool
+
+
+class WarehouseClassificationOverride(BaseModel):
+    table_name: str
+    classification: str  # "fact" | "dimension"
+
+
+class WarehouseTableResult(BaseModel):
+    table_name: str
+    row_count: Optional[int] = None
+
+
+class JoinValidation(BaseModel):
+    fact_table: str
+    dimension_table: str
+    foreign_key_column: str
+    orphan_count: Optional[int] = None
+    status: str  # "passed" | "warning" | "error"
+    error: Optional[str] = None
+
+
+class AggregationValidation(BaseModel):
+    table: str
+    column: str
+    aggregation: str
+    result: Optional[float] = None
+    status: str  # "passed" | "error"
+    error: Optional[str] = None
+
+
+class WarehousePreviewResponse(BaseModel):
+    project_id: int
+    status: str  # "success" | "warning" | "failed"
+    sandbox_initialized: bool
+    tables_created: List[WarehouseTableResult]
+    join_validations: List[JoinValidation]
+    aggregation_validations: List[AggregationValidation]
+    execution_time_ms: int

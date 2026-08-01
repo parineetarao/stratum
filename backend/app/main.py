@@ -4,6 +4,7 @@ from app.database import engine, Base
 from app.api import auth, projects, connections, metadata, relationships
 from app.api import profiling as profiling_router
 from app.api import quality as quality_router
+from app.api import cleaning as cleaning_router
 from app.api import warehouse as warehouse_router
 from app.api import kpis as kpis_router
 from app.api import sql_workspace as sql_router
@@ -47,6 +48,7 @@ app.include_router(metadata.router)
 app.include_router(relationships.router)
 app.include_router(profiling_router.router)
 app.include_router(quality_router.router)
+app.include_router(cleaning_router.router)
 app.include_router(warehouse_router.router)
 app.include_router(sandbox_router.router)
 app.include_router(kpis_router.router)

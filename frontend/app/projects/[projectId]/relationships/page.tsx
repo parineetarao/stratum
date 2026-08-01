@@ -1,5 +1,5 @@
-import PlaceholderModule from '@/components/workspace/PlaceholderModule';
+import RelationshipsExplorer from '@/components/workspace/relationships/RelationshipsExplorer';
 
 export default function RelationshipsPage() {
-  return <PlaceholderModule moduleName="Relationships" />;
+  return <RelationshipsExplorer />;
 }

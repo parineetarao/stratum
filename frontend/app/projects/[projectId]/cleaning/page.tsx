@@ -1,5 +1,5 @@
-import PlaceholderModule from '@/components/workspace/PlaceholderModule';
+import CleaningExplorer from '@/components/workspace/cleaning/CleaningExplorer';
 
 export default function CleaningPage() {
-  return <PlaceholderModule moduleName="Cleaning" />;
+  return <CleaningExplorer />;
 }

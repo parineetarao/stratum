@@ -1,0 +1,33 @@
+.stratum-flow .react-flow__controls {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.stratum-flow .react-flow__controls-button {
+  width: 30px;
+  height: 30px;
+  background: #0b0d12;
+  border-bottom-color: rgba(148, 163, 184, 0.14);
+  color: #f4f4f5;
+}
+
+.stratum-flow .react-flow__controls-button svg {
+  max-width: 13px;
+  max-height: 13px;
+  fill: currentColor;
+}
+
+.stratum-flow .react-flow__controls-button:hover {
+  background: rgba(139, 92, 246, 0.18);
+  color: #ffffff;
+}
+
+.stratum-flow .react-flow__controls-button:disabled svg {
+  fill-opacity: 0.3;
+}
+
+.stratum-flow .react-flow__attribution {
+  display: none;
+}

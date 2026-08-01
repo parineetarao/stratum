@@ -21,7 +21,9 @@ from app.engine.sandbox_engine import (
     execute_warehouse_ddl,
     refresh_warehouse_data,
     get_sandbox_tables,
-    sandbox_exists
+    sandbox_exists,
+    get_sandbox_total_rows,
+    get_sandbox_last_synced
 )
 from app.core.scheduler import scheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -227,7 +229,9 @@ def get_sandbox_status(
             initialized=False,
             source_tables=[],
             warehouse_tables=[],
-            has_warehouse=False
+            has_warehouse=False,
+            total_rows=None,
+            last_synced_at=None
         )
 
     all_tables = get_sandbox_tables(project_id)
@@ -245,7 +249,9 @@ def get_sandbox_status(
         initialized=True,
         source_tables=source_tables,
         warehouse_tables=warehouse_tables,
-        has_warehouse=len(warehouse_tables) > 0
+        has_warehouse=len(warehouse_tables) > 0,
+        total_rows=get_sandbox_total_rows(project_id),
+        last_synced_at=get_sandbox_last_synced(project_id)
     )
 @router.post("/{project_id}/sandbox/schedule-refresh")
 def schedule_warehouse_refresh(

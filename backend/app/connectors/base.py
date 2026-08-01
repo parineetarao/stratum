@@ -43,3 +43,18 @@ class BaseConnector(ABC):
     def get_foreign_keys(self, table_name: str) -> List[Dict[str, Any]]:
         """Return foreign key relationships for a table."""
         pass
+
+    @abstractmethod
+    def get_sample_rows(self, table_name: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Return a sample of full rows (all columns) from a table."""
+        pass
+
+    @abstractmethod
+    def get_indexes(self, table_name: str) -> List[Dict[str, Any]]:
+        """Return indexes defined on a table: name, columns, is_unique, is_primary."""
+        pass
+
+    @abstractmethod
+    def get_constraints(self, table_name: str) -> List[Dict[str, Any]]:
+        """Return constraints defined on a table: name, type, definition."""
+        pass

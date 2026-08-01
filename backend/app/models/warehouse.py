@@ -19,3 +19,4 @@ class WarehouseDesign(Base):
     warehouse_table_names = Column(JSON, nullable=True)
     full_ddl_postgres = Column(String, nullable=True)
     full_ddl_duckdb = Column(String, nullable=True)
+    overrides = Column(JSON, nullable=True)

@@ -1,5 +1,5 @@
-import PlaceholderModule from '@/components/workspace/PlaceholderModule';
+import DataQualityExplorer from '@/components/workspace/data-quality/DataQualityExplorer';
 
 export default function DataQualityPage() {
-  return <PlaceholderModule moduleName="Data Quality" />;
+  return <DataQualityExplorer />;
 }

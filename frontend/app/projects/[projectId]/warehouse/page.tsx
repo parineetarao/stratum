@@ -1,5 +1,5 @@
-import PlaceholderModule from '@/components/workspace/PlaceholderModule';
+import WarehouseExplorer from '@/components/workspace/warehouse/WarehouseExplorer';
 
 export default function WarehousePage() {
-  return <PlaceholderModule moduleName="Warehouse" />;
+  return <WarehouseExplorer />;
 }

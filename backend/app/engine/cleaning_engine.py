@@ -28,7 +28,11 @@ def generate_cleaning_recommendations(
                 "confidence": "high",
                 "sql_hint": f"DELETE FROM {table_name} WHERE ctid NOT IN "
                             f"(SELECT MIN(ctid) FROM {table_name} "
-                            f"GROUP BY {_get_all_columns(table)})"
+                            f"GROUP BY {_get_all_columns(table)})",
+                "sandbox_sql": (
+                    f"CREATE OR REPLACE TABLE {table_name} AS "
+                    f"SELECT DISTINCT * FROM {table_name}"
+                ),
             })
 
         elif issue_type == "high_null_rate":
@@ -41,6 +45,10 @@ def generate_cleaning_recommendations(
 
             if col_info and col_info.get("numeric_stats"):
                 median_val = col_info["numeric_stats"].get("median")
+                impute_sql = (
+                    f"UPDATE {table_name} SET {column_name} = {median_val} "
+                    f"WHERE {column_name} IS NULL"
+                )
                 recommendations.append({
                     "operation": "impute_median",
                     "table": table_name,
@@ -51,12 +59,14 @@ def generate_cleaning_recommendations(
                         f"'{column_name}' with median value {median_val}"
                     ),
                     "confidence": "medium",
-                    "sql_hint": (
-                        f"UPDATE {table_name} SET {column_name} = {median_val} "
-                        f"WHERE {column_name} IS NULL"
-                    )
+                    "sql_hint": impute_sql,
+                    "sandbox_sql": impute_sql,
                 })
             else:
+                flag_sql = (
+                    f"SELECT COUNT(*) FROM {table_name} "
+                    f"WHERE {column_name} IS NULL"
+                )
                 recommendations.append({
                     "operation": "flag_nulls",
                     "table": table_name,
@@ -67,10 +77,8 @@ def generate_cleaning_recommendations(
                         f"for downstream handling"
                     ),
                     "confidence": "low",
-                    "sql_hint": (
-                        f"SELECT COUNT(*) FROM {table_name} "
-                        f"WHERE {column_name} IS NULL"
-                    )
+                    "sql_hint": flag_sql,
+                    "sandbox_sql": flag_sql,
                 })
 
         elif issue_type == "type_mismatch":
@@ -88,7 +96,12 @@ def generate_cleaning_recommendations(
                     f"ALTER TABLE {table_name} "
                     f"ALTER COLUMN {column_name} TYPE NUMERIC "
                     f"USING {column_name}::NUMERIC"
-                )
+                ),
+                "sandbox_sql": (
+                    f"ALTER TABLE {table_name} "
+                    f"ALTER COLUMN {column_name} TYPE DOUBLE "
+                    f"USING TRY_CAST({column_name} AS DOUBLE)"
+                ),
             })
 
     return recommendations

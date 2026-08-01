@@ -90,3 +90,22 @@ class CSVConnector(BaseConnector):
 
     def get_foreign_keys(self, table_name: str) -> List[Dict[str, Any]]:
         return []
+
+    def get_sample_rows(self, table_name: str, limit: int = 5) -> List[Dict[str, Any]]:
+        conn = self._get_connection()
+        cursor = conn.execute(f"SELECT * FROM {table_name} LIMIT {limit}")
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        return [
+            {
+                col: (None if isinstance(val, float) and pd.isna(val) else val)
+                for col, val in zip(columns, row)
+            }
+            for row in rows
+        ]
+
+    def get_indexes(self, table_name: str) -> List[Dict[str, Any]]:
+        return []
+
+    def get_constraints(self, table_name: str) -> List[Dict[str, Any]]:
+        return []

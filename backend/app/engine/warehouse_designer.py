@@ -189,6 +189,39 @@ def identify_dimensions(table: Dict[str, Any]) -> List[Dict[str, Any]]:
     return dimensions
 
 
+def identify_primary_keys(table: Dict[str, Any]) -> List[str]:
+    return [col["name"] for col in table["columns"] if col.get("is_primary_key")]
+
+
+def identify_foreign_keys(
+    table: Dict[str, Any],
+    dim_warehouse_names: Dict[str, str],
+    fact_warehouse_names: Dict[str, str]
+) -> List[Dict[str, Any]]:
+    """
+    Outgoing foreign keys from this table to other tables that were
+    classified into the warehouse (fact or dimension), mapped to their
+    warehouse table names. Used to draw diagram edges and validate joins.
+    """
+    all_warehouse_names = {**dim_warehouse_names, **fact_warehouse_names}
+    foreign_keys = []
+    for col in table["columns"]:
+        fk = col.get("foreign_key")
+        if not fk:
+            continue
+        referenced = fk.get("referenced_table")
+        warehouse_name = all_warehouse_names.get(referenced)
+        if not warehouse_name:
+            continue
+        foreign_keys.append({
+            "column_name": col["name"],
+            "references_table": referenced,
+            "references_warehouse_table": warehouse_name,
+            "references_column": fk.get("referenced_column")
+        })
+    return foreign_keys
+
+
 def recommend_schema_type(
     schema: List[Dict[str, Any]],
     dimension_table_names: List[str]
@@ -316,7 +349,7 @@ def generate_constraints_postgres(
         if pk_cols:
             lines.append(
                 f"ALTER TABLE {WAREHOUSE_SCHEMA}.{wt} "
-                f"ADD PRIMARY KEY ({pk_cols[0]});"
+                f"ADD PRIMARY KEY ({', '.join(pk_cols)});"
             )
 
     for ft in fact_tables:
@@ -328,7 +361,7 @@ def generate_constraints_postgres(
         if pk_cols:
             lines.append(
                 f"ALTER TABLE {WAREHOUSE_SCHEMA}.{wt} "
-                f"ADD PRIMARY KEY ({pk_cols[0]});"
+                f"ADD PRIMARY KEY ({', '.join(pk_cols)});"
             )
         fk_cols = [
             col["name"] for col in ft["columns"]
@@ -373,7 +406,7 @@ def generate_constraints_duckdb(
         if pk_cols:
             lines.append(
                 f"CREATE UNIQUE INDEX idx_{wt}_pk "
-                f"ON {wt}({pk_cols[0]});"
+                f"ON {wt}({', '.join(pk_cols)});"
             )
 
     for ft in fact_tables:
@@ -392,10 +425,28 @@ def generate_constraints_duckdb(
 
 def design_warehouse(
     schema: List[Dict[str, Any]],
-    source_schema: str = "public"
+    source_schema: str = "public",
+    overrides: Optional[Dict[str, str]] = None
 ) -> Dict[str, Any]:
 
     fact_table_names, dimension_table_names = classify_tables(schema)
+
+    if overrides:
+        known_tables = {t["table_name"] for t in schema}
+        for table_name, classification in overrides.items():
+            if table_name not in known_tables:
+                continue
+            if classification == "fact":
+                if table_name in dimension_table_names:
+                    dimension_table_names.remove(table_name)
+                if table_name not in fact_table_names:
+                    fact_table_names.append(table_name)
+            elif classification == "dimension":
+                if table_name in fact_table_names:
+                    fact_table_names.remove(table_name)
+                if table_name not in dimension_table_names:
+                    dimension_table_names.append(table_name)
+
     schema_type = recommend_schema_type(schema, dimension_table_names)
     table_lookup = {t["table_name"]: t for t in schema}
 
@@ -413,6 +464,9 @@ def design_warehouse(
             continue
         measures = identify_measures(table)
         dimensions = identify_dimensions(table)
+        foreign_keys = identify_foreign_keys(
+            table, dim_warehouse_names, fact_warehouse_names
+        )
         ddl_pg = generate_fact_ddl_postgres(
             table, fact_warehouse_names[table_name], source_schema
         )
@@ -425,6 +479,8 @@ def design_warehouse(
             "fact_score": compute_fact_score(table, schema),
             "measures": measures,
             "dimensions": dimensions,
+            "foreign_keys": foreign_keys,
+            "primary_key": identify_primary_keys(table),
             "row_count": table["row_count"],
             "ddl_postgres": ddl_pg,
             "ddl_duckdb": ddl_duck,
@@ -438,6 +494,9 @@ def design_warehouse(
         if not table:
             continue
         attributes = identify_dimensions(table)
+        foreign_keys = identify_foreign_keys(
+            table, dim_warehouse_names, fact_warehouse_names
+        )
         ddl_pg = generate_dimension_ddl_postgres(
             table, dim_warehouse_names[table_name], source_schema
         )
@@ -448,6 +507,8 @@ def design_warehouse(
             "source_table": table_name,
             "warehouse_table": dim_warehouse_names[table_name],
             "attributes": attributes,
+            "foreign_keys": foreign_keys,
+            "primary_key": identify_primary_keys(table),
             "row_count": table["row_count"],
             "ddl_postgres": ddl_pg,
             "ddl_duckdb": ddl_duck,
@@ -524,7 +585,8 @@ def design_warehouse(
         "warehouse_table_names": (
             list(dim_warehouse_names.values()) +
             list(fact_warehouse_names.values())
-        )
+        ),
+        "overrides": overrides or {}
     }
 
 
