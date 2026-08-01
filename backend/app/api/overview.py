@@ -275,44 +275,54 @@ def get_project_overview(
         status_label = "Active"
 
     # ---- Activity (derived only from real timestamps we already have) ----
-    activity: List[ActivityEvent] = [
-        ActivityEvent(label="Project created", timestamp=project.created_at)
-    ]
-    if connection:
+    activity: List[ActivityEvent] = []
+    if project.created_at:
+        activity.append(ActivityEvent(label="Project created", timestamp=project.created_at))
+
+    if connection and connection.created_at:
         type_label = "PostgreSQL" if connection.connection_type == ConnectionType.postgresql else "file"
         activity.append(ActivityEvent(
             label=f"Data source connected ({type_label})",
             timestamp=connection.created_at,
         ))
-    if latest_snapshot:
+
+    if latest_snapshot and latest_snapshot.created_at:
         activity.append(ActivityEvent(
             label=f"Metadata discovered ({len(tables)} tables)",
             timestamp=latest_snapshot.created_at,
         ))
+
     if relationships:
-        earliest_rel = min(r.created_at for r in relationships)
-        activity.append(ActivityEvent(
-            label=f"Relationships inferred ({len(relationships)})",
-            timestamp=earliest_rel,
-        ))
-    if latest_profiling_run:
+        valid_rel_dates = [r.created_at for r in relationships if r.created_at is not None]
+        if valid_rel_dates:
+            activity.append(ActivityEvent(
+                label=f"Relationships inferred ({len(relationships)})",
+                timestamp=min(valid_rel_dates),
+            ))
+
+    if latest_profiling_run and latest_profiling_run.created_at:
         activity.append(ActivityEvent(
             label="Data quality checks completed",
             timestamp=latest_profiling_run.created_at,
         ))
-    if warehouse_design:
+
+    if warehouse_design and warehouse_design.created_at:
         activity.append(ActivityEvent(
             label="Warehouse model generated",
             timestamp=warehouse_design.created_at,
         ))
-    if kpis:
-        earliest_kpi = min(k.created_at for k in kpis)
-        activity.append(ActivityEvent(
-            label=f"KPIs generated ({len(kpis)})",
-            timestamp=earliest_kpi,
-        ))
 
-    activity.sort(key=lambda e: e.timestamp, reverse=True)
+    if kpis:
+        valid_kpi_dates = [k.created_at for k in kpis if k.created_at is not None]
+        if valid_kpi_dates:
+            activity.append(ActivityEvent(
+                label=f"KPIs generated ({len(kpis)})",
+                timestamp=min(valid_kpi_dates),
+            ))
+
+    from datetime import datetime, timezone
+    fallback_dt = datetime.min.replace(tzinfo=timezone.utc)
+    activity.sort(key=lambda e: e.timestamp if e.timestamp is not None else fallback_dt, reverse=True)
     activity = activity[:8]
 
     return ProjectOverviewResponse(

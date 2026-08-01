@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { ChevronRight, Database, FileSpreadsheet, X } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { ChevronRight, Database, FileSpreadsheet, LogOut, X } from 'lucide-react';
 import type { ProjectOverview, StageStatus } from '@/lib/api';
+import { logoutUser } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth';
 import { OVERVIEW_NAV_ITEM, WORKFLOW_NAV_ITEMS, MANAGEMENT_NAV_ITEMS, stageRoute } from '@/lib/workspaceNav';
 
 const STAGE_DOT_COLOR: Record<StageStatus, string> = {
@@ -61,7 +63,20 @@ export default function WorkspaceSidebar({
   onClose,
 }: WorkspaceSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const userEmail = useAuthStore((state) => state.user?.email);
   const { project, source } = overview;
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch {
+      // Ignore API errors on logout
+    } finally {
+      useAuthStore.getState().logout();
+      router.push('/login');
+    }
+  };
 
   const SourceIcon = source.connection_type === 'postgresql' ? Database : FileSpreadsheet;
   const sourceLabel = !source.is_connected
@@ -214,6 +229,69 @@ export default function WorkspaceSidebar({
         </div>
         {MANAGEMENT_NAV_ITEMS.map(renderItem)}
       </nav>
+
+      {userEmail && (
+        <div style={{ padding: '14px 16px 20px', borderTop: '1px solid rgba(148, 163, 184, 0.12)' }}>
+          <div
+            className="flex items-center"
+            style={{
+              gap: 10,
+              padding: '4px 4px 8px',
+            }}
+          >
+            <div
+              className="flex items-center justify-center"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #6f35f4, #2ea7ff)',
+                color: '#fff',
+                fontSize: 12,
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              {userEmail.charAt(0).toUpperCase()}
+            </div>
+            <span
+              style={{
+                fontSize: 12.5,
+                color: 'rgba(226, 232, 240, 0.75)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                flex: 1,
+              }}
+              title={userEmail}
+            >
+              {userEmail}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex items-center justify-center transition-all duration-150 hover:bg-red-500/20"
+            style={{
+              width: '100%',
+              gap: 8,
+              marginTop: 6,
+              padding: '7px 12px',
+              borderRadius: 7,
+              fontSize: 12,
+              fontWeight: 500,
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.22)',
+              color: '#f87171',
+              cursor: 'pointer',
+            }}
+          >
+            <LogOut size={13} />
+            <span>Log Out</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 

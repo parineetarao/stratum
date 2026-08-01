@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from app.database import get_db
 from app.models.user import User
 from app.models.project import Project, AnalysisMode
@@ -8,12 +8,15 @@ from app.models.connection import Connection, ConnectionType
 from app.models.kpi import KPI
 from app.models.schema_metadata import DiscoveredTable, DiscoveredColumn
 from app.models.warehouse import WarehouseDesign
-from app.schemas.kpi import KPIResponse, KPIApproval, KPIListResponse, KPIRefreshResponse
+from app.schemas.kpi import (
+    KPIResponse, KPIApproval, KPIListResponse, KPIRefreshResponse,
+    KPIGenerateRequest, KPIBulkApproveRequest
+)
 from app.api.deps import get_current_user
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector
-from app.engine.kpi_engine import recommend_kpis, execute_kpi_sql
-from app.engine.sandbox_engine import get_sandbox_tables, sandbox_exists
+from app.engine.kpi_engine import recommend_kpis, execute_kpi_sql, format_kpi_value
+from app.engine.sandbox_engine import sandbox_exists
 
 router = APIRouter(prefix="/projects", tags=["KPIs"])
 
@@ -26,6 +29,39 @@ def get_connector(connection: Connection):
         )
     else:
         return CSVConnector(connection.file_path)
+
+
+def get_confidence_label(score: int) -> str:
+    if score >= 80:
+        return "High"
+    elif score >= 50:
+        return "Medium"
+    return "Low"
+
+
+def build_kpi_response(kpi: KPI) -> KPIResponse:
+    confidence_label = get_confidence_label(kpi.confidence_score or 0)
+    fmt_val = kpi.formatted_value or format_kpi_value(kpi.computed_value, kpi.unit)
+    status_str = kpi.status or ("approved" if kpi.is_approved else "pending")
+    return KPIResponse(
+        id=kpi.id,
+        project_id=kpi.project_id,
+        name=kpi.name,
+        description=kpi.description,
+        category=kpi.category,
+        unit=kpi.unit,
+        sql=kpi.sql,
+        mode=kpi.mode,
+        confidence_score=kpi.confidence_score or 0,
+        confidence_label=confidence_label,
+        computed_value=kpi.computed_value,
+        formatted_value=fmt_val,
+        reasoning=kpi.reasoning,
+        evidence=kpi.evidence,
+        status=status_str,
+        is_approved=kpi.is_approved,
+        created_at=kpi.created_at,
+    )
 
 
 def build_source_schema(project_id: int, db: Session) -> List[dict]:
@@ -47,42 +83,63 @@ def build_source_schema(project_id: int, db: Session) -> List[dict]:
     return schema
 
 
-def build_warehouse_schema(project_id: int) -> List[dict]:
-    """
-    Reads the list of tables currently in the DuckDB sandbox.
-    Used for warehouse mode KPI validation.
-    Returns a minimal schema — table names and column names only.
-    """
-    if not sandbox_exists(project_id):
-        return []
+def assemble_kpi_list_response(project_id: int, mode_str: str, kpis: List[KPI]) -> KPIListResponse:
+    kpi_responses = [build_kpi_response(k) for k in kpis]
+    approved_count = sum(1 for k in kpi_responses if k.status == "approved" or k.is_approved)
+    skipped_count = sum(1 for k in kpi_responses if k.status == "skipped")
+    pending_count = sum(1 for k in kpi_responses if k.status == "pending" and not k.is_approved)
 
-    from app.engine.sandbox_engine import run_query_in_sandbox
-    try:
-        df = run_query_in_sandbox(
-            project_id,
-            "SELECT table_name, column_name FROM "
-            "information_schema.columns WHERE table_schema = 'main' "
-            "ORDER BY table_name, ordinal_position"
-        )
-        schema_dict = {}
-        for _, row in df.iterrows():
-            tname = row["table_name"]
-            cname = row["column_name"]
-            if tname not in schema_dict:
-                schema_dict[tname] = []
-            schema_dict[tname].append({"name": cname, "type": "unknown"})
+    high_count = sum(1 for k in kpi_responses if k.confidence_label == "High")
+    med_count = sum(1 for k in kpi_responses if k.confidence_label == "Medium")
+    low_count = sum(1 for k in kpi_responses if k.confidence_label == "Low")
 
-        return [
-            {"table_name": tname, "columns": cols}
-            for tname, cols in schema_dict.items()
-        ]
-    except Exception:
-        return []
+    return KPIListResponse(
+        project_id=project_id,
+        mode=mode_str,
+        total=len(kpi_responses),
+        approved=approved_count,
+        pending=pending_count,
+        skipped=skipped_count,
+        high_confidence_count=high_count,
+        medium_confidence_count=med_count,
+        low_confidence_count=low_count,
+        kpis=kpi_responses
+    )
 
 
-@router.post("/{project_id}/recommend-kpis", response_model=KPIListResponse)
-def recommend_project_kpis(
+@router.get("/{project_id}/kpis", response_model=KPIListResponse)
+def get_project_kpis(
     project_id: int,
+    mode: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    mode_str = mode or (
+        project.analysis_mode.value
+        if hasattr(project.analysis_mode, 'value')
+        else str(project.analysis_mode or "source")
+    )
+
+    kpis = db.query(KPI).filter(
+        KPI.project_id == project_id
+    ).order_by(KPI.confidence_score.desc()).all()
+
+    return assemble_kpi_list_response(project_id, mode_str, kpis)
+
+
+@router.post("/{project_id}/kpis/generate", response_model=KPIListResponse)
+@router.post("/{project_id}/recommend-kpis", response_model=KPIListResponse)
+def generate_project_kpis(
+    project_id: int,
+    payload: Optional[KPIGenerateRequest] = None,
+    mode: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -105,27 +162,13 @@ def recommend_project_kpis(
     if not connection:
         raise HTTPException(status_code=404, detail="No connection found")
 
-    mode = project.analysis_mode or AnalysisMode.source
-    mode_str = mode.value if hasattr(mode, 'value') else str(mode)
+    req_mode = (payload and payload.mode) or mode or (
+        project.analysis_mode.value
+        if hasattr(project.analysis_mode, 'value')
+        else str(project.analysis_mode or "source")
+    )
 
-    source_schema = build_source_schema(project_id, db)
-
-    design = db.query(WarehouseDesign).filter(
-        WarehouseDesign.project_id == project_id
-    ).first()
-
-    if not design:
-        raise HTTPException(
-            status_code=400,
-            detail="Generate warehouse design first"
-        )
-
-    warehouse_design = {
-        "fact_tables": design.fact_tables or [],
-        "dimension_tables": design.dimension_tables or [],
-    }
-
-    if mode_str == "warehouse" and not sandbox_exists(project_id):
+    if req_mode == "warehouse" and not sandbox_exists(project_id):
         raise HTTPException(
             status_code=400,
             detail=(
@@ -133,6 +176,21 @@ def recommend_project_kpis(
                 "Initialize sandbox and create warehouse first."
             )
         )
+
+    if req_mode in ("source", "warehouse"):
+        project.analysis_mode = AnalysisMode[req_mode]
+        db.commit()
+
+    source_schema = build_source_schema(project_id, db)
+
+    design = db.query(WarehouseDesign).filter(
+        WarehouseDesign.project_id == project_id
+    ).first()
+
+    warehouse_design = {
+        "fact_tables": (design.fact_tables if design else []) or [],
+        "dimension_tables": (design.dimension_tables if design else []) or [],
+    }
 
     connector = get_connector(connection)
 
@@ -145,7 +203,7 @@ def recommend_project_kpis(
     try:
         recommendations = recommend_kpis(
             domain=domain_str,
-            mode=mode_str,
+            mode=req_mode,
             project_id=project_id,
             source_schema=source_schema,
             warehouse_design=warehouse_design,
@@ -160,11 +218,23 @@ def recommend_project_kpis(
         if hasattr(connector, 'dispose'):
             connector.dispose()
 
-    db.query(KPI).filter(KPI.project_id == project_id).delete()
+    existing_kpis = db.query(KPI).filter(KPI.project_id == project_id).all()
+    approved_names = {k.name for k in existing_kpis if k.is_approved or k.status == "approved"}
+
+    # Delete unapproved existing KPIs to replace with new recommendations
+    db.query(KPI).filter(
+        KPI.project_id == project_id,
+        KPI.is_approved == False,
+        (KPI.status == "pending") | (KPI.status == "skipped") | (KPI.status == None)
+    ).delete(synchronize_session=False)
     db.commit()
+    db.expire_all()
 
     saved_kpis = []
     for rec in recommendations:
+        if rec["name"] in approved_names:
+            continue
+
         kpi = KPI(
             project_id=project_id,
             name=rec["name"],
@@ -175,62 +245,30 @@ def recommend_project_kpis(
             mode=rec["mode"],
             confidence_score=rec["confidence_score"],
             computed_value=rec["computed_value"],
+            formatted_value=rec.get("formatted_value"),
+            reasoning=rec.get("reasoning"),
+            evidence=rec.get("evidence"),
+            status="pending",
             is_approved=False
         )
         db.add(kpi)
-        db.flush()
         saved_kpis.append(kpi)
 
     db.commit()
-    for k in saved_kpis:
-        db.refresh(k)
 
-    approved_count = sum(1 for k in saved_kpis if k.is_approved)
-
-    return KPIListResponse(
-        project_id=project_id,
-        mode=mode_str,
-        total=len(saved_kpis),
-        approved=approved_count,
-        kpis=saved_kpis
-    )
-
-
-@router.get("/{project_id}/kpis", response_model=KPIListResponse)
-def get_project_kpis(
-    project_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    kpis = db.query(KPI).filter(
+    all_kpis = db.query(KPI).filter(
         KPI.project_id == project_id
     ).order_by(KPI.confidence_score.desc()).all()
 
-    mode = project.analysis_mode or AnalysisMode.source
-    mode_str = mode.value if hasattr(mode, 'value') else str(mode)
-    approved_count = sum(1 for k in kpis if k.is_approved)
-
-    return KPIListResponse(
-        project_id=project_id,
-        mode=mode_str,
-        total=len(kpis),
-        approved=approved_count,
-        kpis=kpis
-    )
+    return assemble_kpi_list_response(project_id, req_mode, all_kpis)
 
 
+@router.post("/{project_id}/kpis/{kpi_id}/approve", response_model=KPIResponse)
 @router.patch("/{project_id}/kpis/{kpi_id}/approve", response_model=KPIResponse)
 def approve_kpi(
     project_id: int,
     kpi_id: int,
-    approval: KPIApproval,
+    approval: Optional[KPIApproval] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -248,10 +286,140 @@ def approve_kpi(
     if not kpi:
         raise HTTPException(status_code=404, detail="KPI not found")
 
-    kpi.is_approved = approval.is_approved
+    kpi.is_approved = True
+    kpi.status = "approved"
     db.commit()
     db.refresh(kpi)
-    return kpi
+    return build_kpi_response(kpi)
+
+
+@router.post("/{project_id}/kpis/{kpi_id}/skip", response_model=KPIResponse)
+def skip_kpi(
+    project_id: int,
+    kpi_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    kpi = db.query(KPI).filter(
+        KPI.id == kpi_id,
+        KPI.project_id == project_id
+    ).first()
+    if not kpi:
+        raise HTTPException(status_code=404, detail="KPI not found")
+
+    kpi.is_approved = False
+    kpi.status = "skipped"
+    db.commit()
+    db.refresh(kpi)
+    return build_kpi_response(kpi)
+
+
+@router.post("/{project_id}/kpis/{kpi_id}/restore", response_model=KPIResponse)
+@router.post("/{project_id}/kpis/{kpi_id}/unapprove", response_model=KPIResponse)
+def restore_kpi(
+    project_id: int,
+    kpi_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    kpi = db.query(KPI).filter(
+        KPI.id == kpi_id,
+        KPI.project_id == project_id
+    ).first()
+    if not kpi:
+        raise HTTPException(status_code=404, detail="KPI not found")
+
+    kpi.is_approved = False
+    kpi.status = "pending"
+    db.commit()
+    db.refresh(kpi)
+    return build_kpi_response(kpi)
+
+
+@router.post("/{project_id}/kpis/bulk-approve", response_model=KPIListResponse)
+def bulk_approve_high_confidence_kpis(
+    project_id: int,
+    payload: Optional[KPIBulkApproveRequest] = None,
+    mode: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    mode_str = (payload and payload.mode) or mode or (
+        project.analysis_mode.value
+        if hasattr(project.analysis_mode, 'value')
+        else str(project.analysis_mode or "source")
+    )
+
+    kpis = db.query(KPI).filter(
+        KPI.project_id == project_id,
+        (KPI.status == "pending") | (KPI.status == None),
+        KPI.is_approved == False,
+        KPI.confidence_score >= 80
+    ).all()
+
+    for kpi in kpis:
+        kpi.is_approved = True
+        kpi.status = "approved"
+
+    db.commit()
+
+    all_kpis = db.query(KPI).filter(
+        KPI.project_id == project_id
+    ).order_by(KPI.confidence_score.desc()).all()
+
+    return assemble_kpi_list_response(project_id, mode_str, all_kpis)
+
+
+@router.get("/{project_id}/kpis/{kpi_id}/sql")
+def get_kpi_sql(
+    project_id: int,
+    kpi_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    kpi = db.query(KPI).filter(
+        KPI.id == kpi_id,
+        KPI.project_id == project_id
+    ).first()
+    if not kpi:
+        raise HTTPException(status_code=404, detail="KPI not found")
+
+    return {
+        "kpi_id": kpi.id,
+        "name": kpi.name,
+        "sql": kpi.sql,
+        "mode": kpi.mode,
+        "reasoning": kpi.reasoning,
+        "evidence": kpi.evidence
+    }
 
 
 @router.post("/{project_id}/kpis/refresh", response_model=KPIRefreshResponse)
@@ -260,10 +428,6 @@ def refresh_kpi_values(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Re-executes SQL for all approved KPIs and updates computed values.
-    Used by dashboard refresh button.
-    """
     project = db.query(Project).filter(
         Project.id == project_id,
         Project.user_id == current_user.id
@@ -293,6 +457,7 @@ def refresh_kpi_values(
                 kpi.sql, mode_str, project_id, connector
             )
             kpi.computed_value = new_value
+            kpi.formatted_value = format_kpi_value(new_value, kpi.unit)
 
         db.commit()
         for k in approved_kpis:
@@ -301,8 +466,9 @@ def refresh_kpi_values(
         if hasattr(connector, 'dispose'):
             connector.dispose()
 
+    kpi_responses = [build_kpi_response(k) for k in approved_kpis]
     return KPIRefreshResponse(
         project_id=project_id,
         refreshed=len(approved_kpis),
-        kpis=approved_kpis
+        kpis=kpi_responses
     )

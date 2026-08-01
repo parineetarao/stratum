@@ -19,5 +19,9 @@ class KPI(Base):
     mode = Column(String, nullable=False, default="source")
     confidence_score = Column(Integer, default=0)
     computed_value = Column(Float, nullable=True)
+    formatted_value = Column(String, nullable=True)
+    reasoning = Column(String, nullable=True)
+    evidence = Column(JSON, nullable=True)
+    status = Column(String, nullable=False, default="pending")  # pending, approved, skipped
     is_approved = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

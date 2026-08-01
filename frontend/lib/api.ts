@@ -978,3 +978,96 @@ export function extractErrorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+// ---------------------------------------------------------------------------
+// KPIs
+// ---------------------------------------------------------------------------
+
+export type KPIStatus = 'pending' | 'approved' | 'skipped';
+export type KPIConfidenceTier = 'High' | 'Medium' | 'Low';
+
+export interface KPIItem {
+  id: number;
+  project_id: number;
+  name: string;
+  description: string | null;
+  category: string | null;
+  unit: string | null;
+  sql: string;
+  mode: string;
+  confidence_score: number;
+  confidence_label?: KPIConfidenceTier;
+  computed_value: number | null;
+  formatted_value: string | null;
+  reasoning?: string | null;
+  evidence?: Record<string, unknown> | null;
+  status: KPIStatus;
+  is_approved: boolean;
+  error_message?: string | null;
+  created_at?: string;
+}
+
+export interface KPIListResponse {
+  project_id: number;
+  mode: string;
+  total: number;
+  approved: number;
+  pending: number;
+  skipped: number;
+  high_confidence_count: number;
+  medium_confidence_count: number;
+  low_confidence_count: number;
+  kpis: KPIItem[];
+}
+
+export async function getProjectKpis(projectId: number, mode?: string): Promise<KPIListResponse> {
+  const { data } = await apiClient.get<KPIListResponse>(`/projects/${projectId}/kpis`, {
+    params: mode ? { mode } : undefined,
+  });
+  return data;
+}
+
+export async function generateProjectKpis(projectId: number, mode?: string): Promise<KPIListResponse> {
+  const { data } = await apiClient.post<KPIListResponse>(`/projects/${projectId}/kpis/generate`, {
+    mode: mode ?? 'source',
+  });
+  return data;
+}
+
+export async function approveKpi(projectId: number, kpiId: number): Promise<KPIItem> {
+  const { data } = await apiClient.post<KPIItem>(`/projects/${projectId}/kpis/${kpiId}/approve`);
+  return data;
+}
+
+export async function skipKpi(projectId: number, kpiId: number): Promise<KPIItem> {
+  const { data } = await apiClient.post<KPIItem>(`/projects/${projectId}/kpis/${kpiId}/skip`);
+  return data;
+}
+
+export async function restoreKpi(projectId: number, kpiId: number): Promise<KPIItem> {
+  const { data } = await apiClient.post<KPIItem>(`/projects/${projectId}/kpis/${kpiId}/restore`);
+  return data;
+}
+
+export async function unapproveKpi(projectId: number, kpiId: number): Promise<KPIItem> {
+  const { data } = await apiClient.post<KPIItem>(`/projects/${projectId}/kpis/${kpiId}/unapprove`);
+  return data;
+}
+
+export async function bulkApproveHighConfidenceKpis(projectId: number, mode?: string): Promise<KPIListResponse> {
+  const { data } = await apiClient.post<KPIListResponse>(`/projects/${projectId}/kpis/bulk-approve`, {
+    mode: mode ?? 'source',
+  });
+  return data;
+}
+
+export async function setProjectAnalysisMode(
+  projectId: number,
+  mode: 'source' | 'warehouse'
+): Promise<Project> {
+  const { data } = await apiClient.patch<Project>(`/projects/${projectId}`, {
+    analysis_mode: mode,
+  });
+  return data;
+}
+

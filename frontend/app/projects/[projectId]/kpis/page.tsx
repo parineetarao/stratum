@@ -1,5 +1,5 @@
-import PlaceholderModule from '@/components/workspace/PlaceholderModule';
+import KpisExplorer from '@/components/workspace/kpis/KpisExplorer';
 
 export default function KpisPage() {
-  return <PlaceholderModule moduleName="KPIs" />;
+  return <KpisExplorer />;
 }

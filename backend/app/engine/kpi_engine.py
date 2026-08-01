@@ -17,13 +17,15 @@ from typing import List, Dict, Any, Optional, Tuple
 from app.domains import DOMAIN_KPI_LIBRARY
 import re
 
-def _is_partition_table(table_name: str) -> bool:
+def _is_partition_table(table_name: Optional[str]) -> bool:
     """
     Detects PostgreSQL partition tables by naming pattern.
     Example: payment_p2022_03 is a partition of payment.
     These should be excluded from fact table selection so KPIs
     run against the parent table, not a monthly partition.
     """
+    if not table_name or not isinstance(table_name, str):
+        return False
     return bool(re.search(r'_p\d{4}_\d{2}$', table_name))
 
 NUMERIC_TYPES = {
@@ -34,6 +36,8 @@ NUMERIC_TYPES = {
 
 
 def normalize_type(type_str: str) -> str:
+    if not type_str or not isinstance(type_str, str):
+        return ""
     return type_str.lower().split("(")[0].strip()
 
 
@@ -41,12 +45,9 @@ def is_numeric(col_type: str) -> bool:
     return normalize_type(col_type) in NUMERIC_TYPES
 
 
-def column_matches_keywords(col_name: str, keywords: List[str]) -> int:
-    """
-    Returns a match score for a column name against a list of keywords.
-    Higher score = better match.
-    Exact match scores highest. Substring match scores lower.
-    """
+def column_matches_keywords(col_name: Optional[str], keywords: List[str]) -> int:
+    if not col_name or not isinstance(col_name, str):
+        return 0
     col_lower = col_name.lower()
     for keyword in keywords:
         if col_lower == keyword:
@@ -58,7 +59,9 @@ def column_matches_keywords(col_name: str, keywords: List[str]) -> int:
     return 0
 
 
-def table_matches_keywords(table_name: str, keywords: List[str]) -> int:
+def table_matches_keywords(table_name: Optional[str], keywords: List[str]) -> int:
+    if not table_name or not isinstance(table_name, str):
+        return 0
     table_lower = table_name.lower()
     for keyword in keywords:
         if table_lower == keyword:
@@ -75,27 +78,34 @@ def find_best_fact_table(
     if not fact_tables:
         return None
 
+    def safe_get_score(t: Any) -> float:
+        if isinstance(t, dict):
+            score = t.get("fact_score")
+            return float(score) if isinstance(score, (int, float)) else 0.0
+        return 0.0
+
+    valid_facts = [t for t in fact_tables if isinstance(t, dict)]
     non_partition_facts = [
-        t for t in fact_tables
-        if not _is_partition_table(t.get("source_table", ""))
+        t for t in valid_facts
+        if not _is_partition_table(t.get("source_table") or t.get("table_name") or "")
     ]
 
-    tables_to_score = non_partition_facts if non_partition_facts else fact_tables
-    return max(tables_to_score, key=lambda t: t.get("fact_score", 0))
+    tables_to_score = non_partition_facts if non_partition_facts else valid_facts
+    if not tables_to_score:
+        return None
+    return max(tables_to_score, key=safe_get_score)
 
 
 def find_best_table_by_keywords(
     schema: List[Dict[str, Any]],
     table_keywords: List[str]
 ) -> Optional[Dict[str, Any]]:
-    """
-    Searches all tables for the best match against table keywords.
-    Used for KPIs that target dimension tables like customer or product.
-    """
     best_score = 0
     best_table = None
     for table in schema:
-        score = table_matches_keywords(table["table_name"], table_keywords)
+        if not isinstance(table, dict):
+            continue
+        score = table_matches_keywords(table.get("table_name") or table.get("source_table"), table_keywords)
         if score > best_score:
             best_score = score
             best_table = table
@@ -106,13 +116,14 @@ def find_best_measure_column(
     table: Dict[str, Any],
     measure_keywords: List[str]
 ) -> Optional[str]:
-    """
-    Finds the best matching numeric column for a measure KPI.
-    Requires both keyword match and numeric type.
-    """
+    if not isinstance(table, dict):
+        return None
     best_score = 0
     best_col = None
-    for col in table.get("columns", []):
+    cols = table.get("columns") or table.get("measures") or []
+    for col in cols:
+        if not isinstance(col, dict):
+            continue
         if not is_numeric(col.get("type", "") or col.get("data_type", "")):
             continue
         if col.get("is_primary_key"):
@@ -131,12 +142,14 @@ def find_best_identifier_column(
     table: Dict[str, Any],
     identifier_keywords: List[str]
 ) -> Optional[str]:
-    """
-    Finds the best matching identifier column for COUNT DISTINCT KPIs.
-    """
+    if not isinstance(table, dict):
+        return None
     best_score = 0
     best_col = None
-    for col in table.get("columns", []):
+    cols = table.get("columns") or table.get("attributes") or table.get("measures") or []
+    for col in cols:
+        if not isinstance(col, dict):
+            continue
         col_name = col.get("name") or col.get("column_name", "")
         score = column_matches_keywords(col_name, identifier_keywords)
         if score > best_score:
@@ -149,12 +162,14 @@ def find_best_null_column(
     table: Dict[str, Any],
     null_column_keywords: List[str]
 ) -> Optional[str]:
-    """
-    Finds a column likely to contain nulls for null rate KPIs.
-    """
+    if not isinstance(table, dict):
+        return None
     best_score = 0
     best_col = None
-    for col in table.get("columns", []):
+    cols = table.get("columns") or table.get("attributes") or table.get("measures") or []
+    for col in cols:
+        if not isinstance(col, dict):
+            continue
         col_name = col.get("name") or col.get("column_name", "")
         score = column_matches_keywords(col_name, null_column_keywords)
         if score > best_score:
@@ -167,14 +182,11 @@ def get_table_name_for_mode(
     table: Dict[str, Any],
     mode: str
 ) -> str:
-    """
-    Returns the correct table name based on analysis mode.
-    Source mode uses source_table name.
-    Warehouse mode uses warehouse_table name (fact_ or dim_ prefix).
-    """
+    if not isinstance(table, dict):
+        return ""
     if mode == "warehouse":
-        return table.get("warehouse_table") or table.get("table_name")
-    return table.get("source_table") or table.get("table_name")
+        return table.get("warehouse_table") or table.get("table_name") or table.get("source_table") or ""
+    return table.get("source_table") or table.get("table_name") or table.get("warehouse_table") or ""
 
 
 def generate_kpi_sql(
@@ -185,11 +197,9 @@ def generate_kpi_sql(
     identifier_col: Optional[str] = None,
     null_col: Optional[str] = None
 ) -> Optional[str]:
-    """
-    Generates SQL for a KPI based on its aggregation type.
-    Uses the actual table and column names found in the schema.
-    """
     table_name = get_table_name_for_mode(table, mode)
+    if not table_name:
+        return None
     agg = kpi_def["aggregation"]
 
     if agg == "COUNT":
@@ -274,11 +284,6 @@ def execute_kpi_sql(
     project_id: int,
     connector
 ) -> Optional[float]:
-    """
-    Executes KPI SQL against the appropriate environment.
-    Source mode uses the connector.
-    Warehouse mode uses the DuckDB sandbox.
-    """
     try:
         if mode == "warehouse":
             from app.engine.sandbox_engine import run_query_in_sandbox
@@ -296,14 +301,52 @@ def execute_kpi_sql(
         return None
 
 
+def format_kpi_value(value: Optional[float], unit: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+
+    unit_str = (unit or "").lower().strip()
+
+    if unit_str in ("currency", "usd", "$"):
+        abs_val = abs(value)
+        if abs_val >= 1_000_000:
+            return f"${value / 1_000_000:.1f}M"
+        elif abs_val >= 1_000:
+            return f"${value / 1_000:.1f}K"
+        else:
+            return f"${value:,.2f}"
+
+    if unit_str in ("inr", "₹"):
+        abs_val = abs(value)
+        if abs_val >= 10_000_000:
+            return f"₹{value / 10_000_000:.2f}Cr"
+        elif abs_val >= 100_000:
+            return f"₹{value / 100_000:.1f}L"
+        else:
+            return f"₹{value:,.2f}"
+
+    if unit_str in ("percentage", "%"):
+        return f"{value:.2f}%"
+
+    if unit_str in ("days", "day"):
+        return f"{value:.2f} days"
+
+    if unit_str in ("count", "integer", "int"):
+        return f"{int(round(value)):,}"
+
+    if unit_str in ("ratio", "decimal"):
+        return f"{value:.2f}"
+
+    if float(value).is_integer():
+        return f"{int(value):,}"
+    return f"{value:,.2f}"
+
+
 def build_schema_lookup(schema: List[Dict[str, Any]]) -> Dict[str, Dict]:
-    """
-    Builds a lookup of table_name -> table dict for fast access.
-    Handles both source schema (table_name key) and
-    warehouse design output (source_table and warehouse_table keys).
-    """
     lookup = {}
     for table in schema:
+        if not isinstance(table, dict):
+            continue
         name = table.get("table_name") or table.get("source_table")
         if name:
             lookup[name] = table
@@ -321,155 +364,149 @@ def recommend_kpis(
     warehouse_design: Dict[str, Any],
     connector
 ) -> List[Dict[str, Any]]:
+    kpi_library = DOMAIN_KPI_LIBRARY.get(domain, [])
+
     fact_tables = [
         t for t in warehouse_design.get("fact_tables", [])
-        if not _is_partition_table(t.get("source_table", ""))
+        if isinstance(t, dict) and not _is_partition_table(t.get("source_table") or t.get("table_name") or "")
     ]
-    dim_tables = warehouse_design.get("dimension_tables", [])
+    dim_tables = [t for t in warehouse_design.get("dimension_tables", []) if isinstance(t, dict)]
     all_warehouse_tables = fact_tables + dim_tables
 
     best_fact = find_best_fact_table({
         "fact_tables": fact_tables,
         "dimension_tables": dim_tables
     })
-    
-    filtered_design = {
-        "fact_tables": fact_tables,
-        "dimension_tables": dim_tables
-    }
-    """
-    Main entry point for KPI recommendation.
-
-    Parameters:
-        domain: project domain (retail, banking etc.)
-        mode: analysis mode (source or warehouse)
-        project_id: used for sandbox routing in warehouse mode
-        source_schema: discovered tables from source database
-        warehouse_design: full warehouse design output with fact/dim tables
-        connector: active connector for source database queries
-
-    For each KPI in the domain library:
-        1. Identify which table to query
-        2. Find the best matching column
-        3. Generate SQL using actual table and column names
-        4. Execute SQL and capture value
-        5. Compute confidence score
-
-    Returns list of matched KPIs with computed values.
-    """
-    kpi_library = DOMAIN_KPI_LIBRARY.get(domain, [])
-
-    fact_tables = warehouse_design.get("fact_tables", [])
-    dim_tables = warehouse_design.get("dimension_tables", [])
-    all_warehouse_tables = fact_tables + dim_tables
-
-    best_fact = find_best_fact_table(warehouse_design)
 
     recommendations = []
 
     for kpi_def in kpi_library:
-        target_table = None
-        measure_col = None
-        identifier_col = None
-        null_col = None
+        try:
+            target_table = None
+            measure_col = None
+            identifier_col = None
+            null_col = None
 
-        if kpi_def.get("requires_fact_table", True):
-            if not best_fact:
-                continue
-            target_table = best_fact
-        else:
-            table_keywords = kpi_def.get("table_keywords", [])
-            if table_keywords:
-                for t in all_warehouse_tables:
-                    src = t.get("source_table", "")
-                    score = table_matches_keywords(src, table_keywords)
-                    if score >= 50:
-                        target_table = t
-                        break
-                if not target_table:
-                    for t in source_schema:
-                        score = table_matches_keywords(
-                            t.get("table_name", ""), table_keywords
-                        )
+            if kpi_def.get("requires_fact_table", True):
+                if not best_fact:
+                    continue
+                target_table = best_fact
+            else:
+                table_keywords = kpi_def.get("table_keywords", [])
+                if table_keywords:
+                    for t in all_warehouse_tables:
+                        src = t.get("source_table") or t.get("table_name") or ""
+                        score = table_matches_keywords(src, table_keywords)
                         if score >= 50:
                             target_table = t
                             break
+                    if not target_table:
+                        for t in source_schema:
+                            if not isinstance(t, dict):
+                                continue
+                            score = table_matches_keywords(
+                                t.get("table_name") or t.get("source_table") or "", table_keywords
+                            )
+                            if score >= 50:
+                                target_table = t
+                                break
+                else:
+                    target_table = best_fact
+
+            if not target_table:
+                continue
+
+            if mode == "warehouse":
+                table_for_columns = target_table
             else:
-                target_table = best_fact
+                src_name = (
+                    target_table.get("source_table")
+                    or target_table.get("table_name")
+                )
+                table_for_columns = next(
+                    (t for t in source_schema
+                     if isinstance(t, dict) and t.get("table_name") == src_name),
+                    target_table
+                )
 
-        if not target_table:
+            agg = kpi_def["aggregation"]
+
+            if kpi_def.get("measure_keywords"):
+                measure_col = find_best_measure_column(
+                    table_for_columns, kpi_def["measure_keywords"]
+                )
+                if agg not in ("COUNT", "COUNT_DISTINCT") and not measure_col:
+                    continue
+
+            if kpi_def.get("identifier_keywords"):
+                identifier_col = find_best_identifier_column(
+                    table_for_columns, kpi_def["identifier_keywords"]
+                )
+                if agg in (
+                    "COUNT_DISTINCT", "SUM_PER_DISTINCT", "COUNT_PER_DISTINCT"
+                ) and not identifier_col:
+                    continue
+
+            if kpi_def.get("null_column_keywords"):
+                null_col = find_best_null_column(
+                    table_for_columns, kpi_def["null_column_keywords"]
+                )
+                if agg == "NULL_RATE" and not null_col:
+                    continue
+
+            sql = generate_kpi_sql(
+                kpi_def, target_table, mode,
+                measure_col, identifier_col, null_col
+            )
+            if not sql:
+                continue
+
+            confidence = 100
+            if measure_col:
+                score = column_matches_keywords(
+                    measure_col, kpi_def.get("measure_keywords", [])
+                )
+                confidence = min(confidence, score)
+            if identifier_col and kpi_def.get("identifier_keywords"):
+                score = column_matches_keywords(
+                    identifier_col, kpi_def.get("identifier_keywords", [])
+                )
+                confidence = min(confidence, score)
+
+            value = execute_kpi_sql(sql, mode, project_id, connector)
+            formatted_value = format_kpi_value(value, kpi_def.get("unit"))
+
+            tname = get_table_name_for_mode(target_table, mode)
+            col_used = measure_col or identifier_col or null_col
+            reasoning = (
+                f"Recommended because {tname}.{col_used or 'rows'} is a numeric measure "
+                f"or key linked to {domain} metrics."
+            )
+            evidence = {
+                "table_name": tname,
+                "column_used": col_used,
+                "aggregation": agg,
+                "match_score": confidence,
+                "mode": mode
+            }
+
+            recommendations.append({
+                "name": kpi_def["name"],
+                "description": kpi_def["description"],
+                "category": kpi_def["category"],
+                "unit": kpi_def["unit"],
+                "sql": sql,
+                "mode": mode,
+                "confidence_score": confidence,
+                "computed_value": value,
+                "formatted_value": formatted_value,
+                "reasoning": reasoning,
+                "evidence": evidence,
+                "is_approved": False,
+            })
+        except Exception:
             continue
-
-        if mode == "warehouse":
-            table_for_columns = target_table
-        else:
-            src_name = (
-                target_table.get("source_table")
-                or target_table.get("table_name")
-            )
-            table_for_columns = next(
-                (t for t in source_schema
-                 if t.get("table_name") == src_name),
-                target_table
-            )
-
-        agg = kpi_def["aggregation"]
-
-        if kpi_def.get("measure_keywords"):
-            measure_col = find_best_measure_column(
-                table_for_columns, kpi_def["measure_keywords"]
-            )
-            if agg not in ("COUNT", "COUNT_DISTINCT") and not measure_col:
-                continue
-
-        if kpi_def.get("identifier_keywords"):
-            identifier_col = find_best_identifier_column(
-                table_for_columns, kpi_def["identifier_keywords"]
-            )
-            if agg in (
-                "COUNT_DISTINCT", "SUM_PER_DISTINCT", "COUNT_PER_DISTINCT"
-            ) and not identifier_col:
-                continue
-
-        if kpi_def.get("null_column_keywords"):
-            null_col = find_best_null_column(
-                table_for_columns, kpi_def["null_column_keywords"]
-            )
-            if agg == "NULL_RATE" and not null_col:
-                continue
-
-        sql = generate_kpi_sql(
-            kpi_def, target_table, mode,
-            measure_col, identifier_col, null_col
-        )
-        if not sql:
-            continue
-
-        confidence = 100
-        if measure_col:
-            score = column_matches_keywords(
-                measure_col, kpi_def.get("measure_keywords", [])
-            )
-            confidence = min(confidence, score)
-        if identifier_col and kpi_def.get("identifier_keywords"):
-            score = column_matches_keywords(
-                identifier_col, kpi_def.get("identifier_keywords", [])
-            )
-            confidence = min(confidence, score)
-
-        value = execute_kpi_sql(sql, mode, project_id, connector)
-
-        recommendations.append({
-            "name": kpi_def["name"],
-            "description": kpi_def["description"],
-            "category": kpi_def["category"],
-            "unit": kpi_def["unit"],
-            "sql": sql,
-            "mode": mode,
-            "confidence_score": confidence,
-            "computed_value": value,
-            "is_approved": False,
-        })
 
     recommendations.sort(key=lambda x: x["confidence_score"], reverse=True)
     return recommendations
+

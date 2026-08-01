@@ -1,8 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Bell, Database, FolderKanban, Link2, Settings, Users, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Bell, Database, FolderKanban, Link2, LogOut, Settings, Users, X } from 'lucide-react';
 import Logo from '@/components/landing/Logo';
+import { useAuthStore } from '@/lib/auth';
+import { logoutUser } from '@/lib/api';
 
 interface NavItem {
   label: string;
@@ -28,6 +31,19 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ email, isOverlay, isOpen, onClose }: SidebarProps) {
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch {
+      // Ignore API errors on logout
+    } finally {
+      useAuthStore.getState().logout();
+      router.push('/login');
+    }
+  };
+
   const content = (
     <div
       style={{
@@ -134,12 +150,35 @@ export default function Sidebar({ email, isOverlay, isOpen, onClose }: SidebarPr
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
+              flex: 1,
             }}
             title={email}
           >
             {email}
           </span>
         </div>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex items-center justify-center transition-all duration-150 hover:bg-red-500/20"
+          style={{
+            width: '100%',
+            gap: 8,
+            marginTop: 12,
+            padding: '8px 12px',
+            borderRadius: 7,
+            fontSize: 12.5,
+            fontWeight: 500,
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.22)',
+            color: '#f87171',
+            cursor: 'pointer',
+          }}
+        >
+          <LogOut size={14} />
+          <span>Log Out</span>
+        </button>
       </div>
     </div>
   );

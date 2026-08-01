@@ -22,6 +22,29 @@ from app.core.scheduler import scheduler
 
 Base.metadata.create_all(bind=engine)
 
+def ensure_kpi_table_columns():
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    if inspector.has_table("kpis"):
+        existing_cols = {c["name"] for c in inspector.get_columns("kpis")}
+        new_cols = [
+            ("formatted_value", "VARCHAR"),
+            ("reasoning", "TEXT"),
+            ("evidence", "TEXT"),
+            ("status", "VARCHAR DEFAULT 'pending'"),
+        ]
+        with engine.connect() as conn:
+            for col_name, col_type in new_cols:
+                if col_name not in existing_cols:
+                    try:
+                        conn.execute(text(f"ALTER TABLE kpis ADD COLUMN {col_name} {col_type}"))
+                    except Exception:
+                        pass
+            conn.commit()
+
+ensure_kpi_table_columns()
+
+
 app = FastAPI(
     title="Stratum",
     description="Enterprise Analytics Engineering Platform",
