@@ -816,18 +816,114 @@ export interface SQLExecuteResponse {
   row_count: number;
   execution_time_ms: number | null;
   error: string | null;
+  explain_plan?: string | null;
+  rows_scanned?: number | null;
 }
 
 export async function executeSql(
   projectId: number,
   sql: string,
-  environment: SqlEnvironment = 'source'
+  environment: SqlEnvironment = 'source',
+  signal?: AbortSignal
 ): Promise<SQLExecuteResponse> {
-  const { data } = await apiClient.post<SQLExecuteResponse>(`/projects/${projectId}/sql/execute`, {
+  const { data } = await apiClient.post<SQLExecuteResponse>(
+    `/projects/${projectId}/sql/execute`,
+    { sql, environment },
+    { signal }
+  );
+  return data;
+}
+
+export interface SQLExplainResponse {
+  explanation: string;
+  tables_used: string[];
+  operations: string[];
+  business_question: string;
+  suggestions: string[];
+}
+
+export async function explainSql(
+  projectId: number,
+  sql: string,
+  environment: SqlEnvironment = 'source'
+): Promise<SQLExplainResponse> {
+  const { data } = await apiClient.post<SQLExplainResponse>(`/projects/${projectId}/sql/explain`, {
     sql,
     environment,
   });
   return data;
+}
+
+export interface SQLOptimizeResponse {
+  suggestions: string[];
+  index_recommendations: string[];
+  rewritten_sql: string | null;
+}
+
+export async function optimizeSql(
+  projectId: number,
+  sql: string,
+  environment: SqlEnvironment = 'source'
+): Promise<SQLOptimizeResponse> {
+  const { data } = await apiClient.post<SQLOptimizeResponse>(`/projects/${projectId}/sql/optimize`, {
+    sql,
+    environment,
+  });
+  return data;
+}
+
+export interface SQLGenerateResponse {
+  sql: string;
+  explanation: string;
+}
+
+export async function generateSqlFromPrompt(
+  projectId: number,
+  prompt: string,
+  environment: SqlEnvironment = 'source'
+): Promise<SQLGenerateResponse> {
+  const { data } = await apiClient.post<SQLGenerateResponse>(`/projects/${projectId}/sql/generate`, {
+    prompt,
+    environment,
+  });
+  return data;
+}
+
+export interface SavedQuery {
+  id: number;
+  project_id: number;
+  name: string;
+  sql: string;
+  environment: string;
+  created_at: string;
+}
+
+export interface QueryHistoryResponse {
+  project_id: number;
+  queries: SavedQuery[];
+}
+
+export async function saveQuery(
+  projectId: number,
+  name: string,
+  sql: string,
+  environment: SqlEnvironment = 'source'
+): Promise<SavedQuery> {
+  const { data } = await apiClient.post<SavedQuery>(`/projects/${projectId}/sql/save`, {
+    name,
+    sql,
+    environment,
+  });
+  return data;
+}
+
+export async function getQueryHistory(projectId: number): Promise<QueryHistoryResponse> {
+  const { data } = await apiClient.get<QueryHistoryResponse>(`/projects/${projectId}/sql/history`);
+  return data;
+}
+
+export async function deleteSavedQuery(projectId: number, queryId: number): Promise<void> {
+  await apiClient.delete(`/projects/${projectId}/sql/history/${queryId}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1058,6 +1154,164 @@ export async function bulkApproveHighConfidenceKpis(projectId: number, mode?: st
   const { data } = await apiClient.post<KPIListResponse>(`/projects/${projectId}/kpis/bulk-approve`, {
     mode: mode ?? 'source',
   });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+
+export type DashboardChartType = 'line' | 'bar' | 'horizontal_bar' | 'donut' | 'pie' | 'area' | 'card' | 'table';
+
+export interface DashboardChartDataPoint {
+  period: string | null;
+  value: number | null;
+  label: string | null;
+}
+
+export interface DashboardChart {
+  kpi_id: number;
+  kpi_name: string;
+  category: string | null;
+  unit: string | null;
+  computed_value: number | null;
+  formatted_value: string;
+  sql: string;
+  mode: string;
+  chart_type: string;
+  title: string;
+  value_label: string;
+  has_chart: boolean;
+  color_scheme?: string;
+  x_label?: string | null;
+  y_label?: string | null;
+  grid_position?: number;
+  grid_width?: number;
+  timeseries_sql?: string | null;
+  donut_value?: number | null;
+  donut_max?: number | null;
+  chart_data?: DashboardChartDataPoint[] | null;
+  supported_chart_types: string[];
+  custom_title?: string | null;
+  is_visible: boolean;
+}
+
+export interface DashboardResponse {
+  project_id: number;
+  project_name: string;
+  domain: string;
+  mode: string;
+  total_kpis: number;
+  charts: DashboardChart[];
+  last_refreshed: string;
+}
+
+export interface DashboardRefreshResponse {
+  project_id: number;
+  refreshed_kpis: number;
+  charts: DashboardChart[];
+  last_refreshed: string;
+}
+
+export interface ChartConfigUpdate {
+  chart_type?: string;
+  custom_title?: string | null;
+  color_scheme?: string;
+  x_label?: string | null;
+  y_label?: string | null;
+  grid_position?: number;
+  grid_width?: number;
+  is_visible?: boolean;
+  chart_options?: Record<string, unknown> | null;
+}
+
+export interface ChartConfigResponse {
+  id: number;
+  project_id: number;
+  kpi_id: number;
+  chart_type: string;
+  custom_title: string | null;
+  color_scheme: string | null;
+  x_label: string | null;
+  y_label: string | null;
+  grid_position: number;
+  grid_width: number;
+  is_visible: boolean;
+  chart_options: Record<string, unknown> | null;
+}
+
+export interface DashboardReportResponse {
+  project_id: number;
+  project_name: string;
+  domain: string;
+  generated_at: string;
+  quality_score: number | null;
+  total_kpis: number;
+  kpi_summary: Array<Record<string, unknown>>;
+  executive_summary: string | null;
+  findings: Array<Record<string, unknown>> | null;
+  sections: Array<{ title: string; content: string }>;
+}
+
+export async function getDashboard(projectId: number): Promise<DashboardResponse> {
+  const { data } = await apiClient.get<DashboardResponse>(`/projects/${projectId}/dashboard`);
+  return data;
+}
+
+export async function refreshDashboard(projectId: number): Promise<DashboardRefreshResponse> {
+  const { data } = await apiClient.post<DashboardRefreshResponse>(`/projects/${projectId}/dashboard/refresh`);
+  return data;
+}
+
+export async function saveChartConfig(
+  projectId: number,
+  kpiId: number,
+  config: ChartConfigUpdate
+): Promise<ChartConfigResponse> {
+  const { data } = await apiClient.post<ChartConfigResponse>(
+    `/projects/${projectId}/dashboard/config/${kpiId}`,
+    config
+  );
+  return data;
+}
+
+export async function getDashboardReport(projectId: number): Promise<DashboardReportResponse> {
+  const { data } = await apiClient.get<DashboardReportResponse>(`/projects/${projectId}/dashboard/report`);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// AI Insights
+// ---------------------------------------------------------------------------
+
+export type InsightSentiment = 'positive' | 'warning' | 'risk';
+
+export interface InsightFinding {
+  title: string;
+  observation: string;
+  action: string;
+  sentiment: InsightSentiment;
+}
+
+export interface CriticalInsight {
+  type: string;
+  title: string;
+  description: string;
+  recommended_action: string;
+}
+
+export interface InsightsResponse {
+  project_id: number;
+  domain: string;
+  success: boolean;
+  executive_summary: string;
+  findings: InsightFinding[];
+  critical_risk_or_opportunity: CriticalInsight | null;
+  kpis_analyzed: number;
+}
+
+export async function generateInsights(projectId: number): Promise<InsightsResponse> {
+  const { data } = await apiClient.post<InsightsResponse>(`/projects/${projectId}/insights`);
   return data;
 }
 

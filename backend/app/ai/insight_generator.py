@@ -58,7 +58,8 @@ Respond ONLY with valid JSON in this exact format, no other text:
         {
             "title": "Finding title in 5 words or less",
             "observation": "What the data shows",
-            "action": "Specific recommended action"
+            "action": "Specific recommended action",
+            "sentiment": "positive, warning, or risk depending on business impact"
         }
     ],
     "critical_risk_or_opportunity": {

@@ -1,205 +1,281 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Loader2, Play, Terminal } from 'lucide-react';
-import { executeSql, extractErrorMessage, type SQLExecuteResponse, type SqlEnvironment } from '@/lib/api';
+import {
+  executeSql,
+  saveQuery,
+  getSandboxStatus,
+  getProjectConnection,
+  extractErrorMessage,
+  type SqlEnvironment,
+  type Connection,
+  type SavedQuery,
+} from '@/lib/api';
 import { useWorkspace } from '@/components/workspace/WorkspaceContext';
+import TopBar from './TopBar';
+import SchemaBrowserPanel from './SchemaBrowserPanel';
+import QueryTabsBar from './QueryTabsBar';
+import EditorToolbar from './EditorToolbar';
+import SqlEditor, { type SqlEditorHandle } from './SqlEditor';
+import ResultsPanel from './ResultsPanel';
+import AiAssistantPanel from './AiAssistantPanel';
+import SaveQueryModal from './SaveQueryModal';
+import { createTab, type QueryTab } from './types';
+import { formatSql, rowsToCsv, downloadCsv } from './uiHelpers';
 
-function actionButtonStyle(disabled: boolean, primary = false): React.CSSProperties {
-  return {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 7,
-    height: 36,
-    padding: '0 14px',
-    borderRadius: 8,
-    border: primary ? 'none' : '1px solid rgba(148, 163, 184, 0.24)',
-    background: primary
-      ? 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)'
-      : 'rgba(148, 163, 184, 0.06)',
-    color: primary ? '#fff' : '#f4f4f5',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.55 : 1,
-    whiteSpace: 'nowrap',
-  };
-}
+let tabCounter = 1;
 
 export default function SqlWorkspaceExplorer() {
   const { overview } = useWorkspace();
   const projectId = overview.project.id;
   const searchParams = useSearchParams();
 
-  const [sql, setSql] = useState(searchParams.get('sql') ?? '');
-  const [environment, setEnvironment] = useState<SqlEnvironment>(
-    (searchParams.get('env') as SqlEnvironment) || 'source'
-  );
-  const [isRunning, setIsRunning] = useState(false);
-  const [result, setResult] = useState<SQLExecuteResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const initialSql = searchParams.get('sql') ?? '';
+  const initialEnv = (searchParams.get('env') as SqlEnvironment) || 'source';
 
-  async function handleRun() {
-    if (!sql.trim() || isRunning) return;
-    setIsRunning(true);
-    setError(null);
+  const [environment, setEnvironment] = useState<SqlEnvironment>(initialEnv);
+  const [tabs, setTabs] = useState<QueryTab[]>(() => [createTab('tab-1', 'Query 1', initialSql)]);
+  const [activeTabId, setActiveTabId] = useState('tab-1');
+
+  const [connection, setConnection] = useState<Connection | null>(null);
+  const [sandboxAvailable, setSandboxAvailable] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [autoExplainToken, setAutoExplainToken] = useState(0);
+
+  const editorRef = useRef<SqlEditorHandle>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadConnectionInfo() {
+      try {
+        const [conn, sandbox] = await Promise.all([
+          getProjectConnection(projectId),
+          getSandboxStatus(projectId).catch(() => null),
+        ]);
+        if (!cancelled) {
+          setConnection(conn);
+          setSandboxAvailable(!!sandbox?.initialized);
+        }
+      } catch {
+        // best-effort — leave defaults
+      }
+    }
+    loadConnectionInfo();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, refreshToken]);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+
+  function updateActiveTab(patch: Partial<QueryTab>) {
+    setTabs((prev) => prev.map((t) => (t.id === activeTab.id ? { ...t, ...patch } : t)));
+  }
+
+  function handleAddTab() {
+    tabCounter += 1;
+    const id = `tab-${tabCounter}`;
+    const newTab = createTab(id, `Query ${tabCounter}`);
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(id);
+  }
+
+  function handleCloseTab(id: string) {
+    setTabs((prev) => {
+      const remaining = prev.filter((t) => t.id !== id);
+      if (remaining.length === 0) {
+        tabCounter += 1;
+        const freshId = `tab-${tabCounter}`;
+        const fresh = createTab(freshId, `Query ${tabCounter}`);
+        setActiveTabId(freshId);
+        return [fresh];
+      }
+      if (id === activeTabId) {
+        setActiveTabId(remaining[remaining.length - 1].id);
+      }
+      return remaining;
+    });
+  }
+
+  const handleRun = useCallback(async () => {
+    if (!activeTab || !activeTab.sql.trim() || activeTab.isRunning) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    updateActiveTab({ isRunning: true, error: null });
+
     try {
-      const data = await executeSql(projectId, sql, environment);
-      setResult(data);
-      if (!data.success && data.error) {
-        setError(data.error);
+      const data = await executeSql(projectId, activeTab.sql, environment, controller.signal);
+      updateActiveTab({ result: data, error: data.success ? null : data.error, isRunning: false });
+      if (data.success) {
+        setAutoExplainToken((v) => v + 1);
       }
     } catch (err) {
-      setError(extractErrorMessage(err, 'Query execution failed.'));
-      setResult(null);
-    } finally {
-      setIsRunning(false);
+      updateActiveTab({ error: extractErrorMessage(err, 'Query execution failed.'), result: null, isRunning: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, environment, projectId]);
+
+  function handleStop() {
+    abortControllerRef.current?.abort();
+    updateActiveTab({ isRunning: false });
+  }
+
+  function handleFormat() {
+    if (!activeTab) return;
+    updateActiveTab({ sql: formatSql(activeTab.sql) });
+  }
+
+  function handleClear() {
+    updateActiveTab({ sql: '', result: null, error: null });
+  }
+
+  function handleExport() {
+    if (!activeTab.result?.success) return;
+    downloadCsv(`query-results-${Date.now()}.csv`, rowsToCsv(activeTab.result.columns, activeTab.result.rows));
+  }
+
+  async function handleSaveQuery(name: string) {
+    await saveQuery(projectId, name, activeTab.sql, environment);
+    setSaveModalOpen(false);
+  }
+
+  function handleLoadHistoryQuery(query: SavedQuery) {
+    tabCounter += 1;
+    const id = `tab-${tabCounter}`;
+    const tab = createTab(id, query.name, query.sql);
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(id);
+    if (query.environment === 'source' || query.environment === 'warehouse') {
+      setEnvironment(query.environment);
     }
   }
 
+  function handleInsertTable(tableName: string) {
+    editorRef.current?.insertAtCursor(`SELECT *\nFROM ${tableName}\nLIMIT 100;`);
+  }
+
+  function handleInsertColumn(tableName: string, columnName: string) {
+    editorRef.current?.insertAtCursor(`${tableName}.${columnName}`);
+  }
+
+  function handleInsertGenerated(sql: string) {
+    updateActiveTab({ sql });
+  }
+
+  function handleRefreshSchema() {
+    setIsRefreshing(true);
+    setRefreshToken((v) => v + 1);
+    setTimeout(() => setIsRefreshing(false), 400);
+  }
+
+  // --- resizable columns ---
+  const [leftWidth, setLeftWidth] = useState(260);
+  const [rightWidth, setRightWidth] = useState(360);
+  const dragState = useRef<{ side: 'left' | 'right'; startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!dragState.current) return;
+      const { side, startX, startWidth } = dragState.current;
+      const delta = e.clientX - startX;
+      if (side === 'left') {
+        setLeftWidth(Math.min(480, Math.max(180, startWidth + delta)));
+      } else {
+        setRightWidth(Math.min(560, Math.max(260, startWidth - delta)));
+      }
+    }
+    function onMouseUp() {
+      dragState.current = null;
+    }
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
+  if (!activeTab) return null;
+
   return (
-    <div className="flex flex-col" style={{ gap: 20 }}>
-      <div className="flex items-start justify-between" style={{ gap: 16, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 19, fontWeight: 650, color: '#f5f5f7', marginBottom: 4 }}>SQL Workspace</h1>
-          <p style={{ fontSize: 13, color: 'rgba(226, 232, 240, 0.55)' }}>
-            Run queries against your source data or the analytical sandbox.
-          </p>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <TopBar
+        environment={environment}
+        onEnvironmentChange={setEnvironment}
+        sandboxAvailable={sandboxAvailable}
+        connection={connection}
+        onRefreshSchema={handleRefreshSchema}
+        isRefreshing={isRefreshing}
+      />
+
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div style={{ width: leftWidth, flexShrink: 0, borderRight: '1px solid rgba(148, 163, 184, 0.15)', background: '#0a0d12', minHeight: 0 }}>
+          <SchemaBrowserPanel
+            projectId={projectId}
+            environment={environment}
+            refreshToken={refreshToken}
+            onInsertTable={handleInsertTable}
+            onInsertColumn={handleInsertColumn}
+          />
         </div>
 
-        <div className="flex items-center" style={{ gap: 8 }}>
-          <select
-            value={environment}
-            onChange={(e) => setEnvironment(e.target.value as SqlEnvironment)}
-            style={{
-              height: 36,
-              padding: '0 12px',
-              borderRadius: 8,
-              border: '1px solid rgba(148, 163, 184, 0.24)',
-              background: '#05070a',
-              color: '#f4f4f5',
-              fontSize: 13,
-            }}
-          >
-            <option value="source">Source</option>
-            <option value="warehouse">Sandbox</option>
-          </select>
-          <button type="button" onClick={handleRun} disabled={isRunning || !sql.trim()} style={actionButtonStyle(isRunning || !sql.trim(), true)}>
-            {isRunning ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
-            Run
-          </button>
-        </div>
-      </div>
-
-      <div
-        style={{
-          borderRadius: 12,
-          border: '1px solid rgba(148, 163, 184, 0.15)',
-          background: '#05070a',
-          padding: 4,
-        }}
-      >
-        <textarea
-          value={sql}
-          onChange={(e) => setSql(e.target.value)}
-          spellCheck={false}
-          placeholder="SELECT * FROM your_table LIMIT 100;"
-          style={{
-            width: '100%',
-            minHeight: 160,
-            resize: 'vertical',
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            color: '#e2e8f0',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-            fontSize: 13,
-            lineHeight: 1.6,
-            padding: 16,
+        <div
+          onMouseDown={(e) => {
+            dragState.current = { side: 'left', startX: e.clientX, startWidth: leftWidth };
           }}
+          style={{ width: 4, cursor: 'col-resize', flexShrink: 0, background: 'transparent' }}
         />
-      </div>
 
-      {error && (
-        <div
-          style={{
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: '1px solid rgba(248, 113, 113, 0.3)',
-            background: 'rgba(248, 113, 113, 0.07)',
-            fontSize: 13,
-            color: '#fca5a5',
-          }}
-        >
-          {error}
-        </div>
-      )}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <QueryTabsBar tabs={tabs} activeTabId={activeTab.id} onSelect={setActiveTabId} onClose={handleCloseTab} onAdd={handleAddTab} />
+          <EditorToolbar
+            projectId={projectId}
+            isRunning={activeTab.isRunning}
+            canRun={!!activeTab.sql.trim()}
+            onRun={handleRun}
+            onStop={handleStop}
+            onFormat={handleFormat}
+            onClear={handleClear}
+            onSave={() => setSaveModalOpen(true)}
+            onNewTab={handleAddTab}
+            onExport={handleExport}
+            canExport={!!activeTab.result?.success}
+            onLoadHistoryQuery={handleLoadHistoryQuery}
+          />
 
-      {result && result.success && (
-        <div
-          style={{
-            borderRadius: 12,
-            border: '1px solid rgba(148, 163, 184, 0.15)',
-            background: '#05070a',
-            padding: '16px 18px',
-            overflow: 'auto',
-          }}
-        >
-          <div className="flex items-center" style={{ gap: 8, marginBottom: 12 }}>
-            <Terminal size={14} style={{ color: '#a78bfa' }} aria-hidden="true" />
-            <span style={{ fontSize: 12.5, color: 'rgba(226, 232, 240, 0.55)' }}>
-              {result.row_count} row{result.row_count === 1 ? '' : 's'}
-              {result.execution_time_ms !== null ? ` · ${result.execution_time_ms}ms` : ''}
-            </span>
+          <div style={{ flex: '1 1 55%', minHeight: 0, borderBottom: '1px solid rgba(148, 163, 184, 0.15)' }}>
+            <SqlEditor ref={editorRef} value={activeTab.sql} onChange={(sql) => updateActiveTab({ sql })} onRun={handleRun} />
           </div>
 
-          {result.columns.length > 0 ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-              <thead>
-                <tr>
-                  {result.columns.map((col) => (
-                    <th
-                      key={col}
-                      style={{
-                        textAlign: 'left',
-                        padding: '6px 10px',
-                        borderBottom: '1px solid rgba(148, 163, 184, 0.15)',
-                        color: 'rgba(226, 232, 240, 0.6)',
-                        fontWeight: 600,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {result.rows.map((row, idx) => (
-                  <tr key={idx}>
-                    {row.map((cell, cellIdx) => (
-                      <td
-                        key={cellIdx}
-                        style={{
-                          padding: '6px 10px',
-                          borderBottom: '1px solid rgba(148, 163, 184, 0.08)',
-                          color: '#e2e8f0',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {cell === null ? <span style={{ color: 'rgba(226,232,240,0.35)' }}>NULL</span> : String(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p style={{ fontSize: 12.5, color: 'rgba(226, 232, 240, 0.5)' }}>Query executed successfully with no rows returned.</p>
-          )}
+          <div style={{ flex: '1 1 45%', minHeight: 0 }}>
+            <ResultsPanel result={activeTab.result} error={activeTab.error} isRunning={activeTab.isRunning} environment={environment} />
+          </div>
         </div>
-      )}
+
+        <div
+          onMouseDown={(e) => {
+            dragState.current = { side: 'right', startX: e.clientX, startWidth: rightWidth };
+          }}
+          style={{ width: 4, cursor: 'col-resize', flexShrink: 0, background: 'transparent' }}
+        />
+
+        <div style={{ width: rightWidth, flexShrink: 0, borderLeft: '1px solid rgba(148, 163, 184, 0.15)', background: '#0a0d12', minHeight: 0 }}>
+          <AiAssistantPanel
+            projectId={projectId}
+            sql={activeTab.sql}
+            environment={environment}
+            autoExplainToken={autoExplainToken}
+            onInsertGenerated={handleInsertGenerated}
+          />
+        </div>
+      </div>
+
+      {saveModalOpen && <SaveQueryModal onCancel={() => setSaveModalOpen(false)} onSave={handleSaveQuery} />}
     </div>
   );
 }

@@ -6,6 +6,7 @@ class InsightFinding(BaseModel):
     title: str
     observation: str
     action: str
+    sentiment: str = "warning"
 
 
 class CriticalInsight(BaseModel):

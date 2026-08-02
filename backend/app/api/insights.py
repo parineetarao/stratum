@@ -64,7 +64,8 @@ def generate_executive_insights(
         InsightFinding(
             title=f.get("title", ""),
             observation=f.get("observation", ""),
-            action=f.get("action", "")
+            action=f.get("action", ""),
+            sentiment=f.get("sentiment", "warning")
         )
         for f in result.get("findings", [])
     ]

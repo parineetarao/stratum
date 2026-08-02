@@ -66,6 +66,44 @@ def execute_timeseries(
         return []
 
 
+def apply_dashboard_configs(
+    charts_config: List[dict],
+    db: Session,
+    project_id: int
+) -> List[dict]:
+    """
+    Overlays any saved DashboardConfig rows onto the auto-computed
+    chart configs, so user customizations (chart type, custom title,
+    size, position, visibility) persist across refreshes.
+    """
+    configs = db.query(DashboardConfig).filter(
+        DashboardConfig.project_id == project_id
+    ).all()
+    configs_by_kpi = {c.kpi_id: c for c in configs}
+
+    for chart in charts_config:
+        config = configs_by_kpi.get(chart.get("kpi_id"))
+        if not config:
+            continue
+        if config.chart_type:
+            chart["chart_type"] = config.chart_type
+        if config.custom_title:
+            chart["custom_title"] = config.custom_title
+            chart["title"] = config.custom_title
+        if config.color_scheme:
+            chart["color_scheme"] = config.color_scheme
+        if config.x_label:
+            chart["x_label"] = config.x_label
+        if config.y_label:
+            chart["y_label"] = config.y_label
+        chart["grid_position"] = config.grid_position
+        chart["grid_width"] = config.grid_width
+        chart["is_visible"] = config.is_visible
+
+    charts_config.sort(key=lambda c: c.get("grid_position") or 0)
+    return charts_config
+
+
 def build_chart_response(
     chart: dict,
     mode: str,
@@ -105,7 +143,9 @@ def build_chart_response(
         donut_value=chart.get("donut_value"),
         donut_max=chart.get("donut_max"),
         chart_data=chart_data,
-        supported_chart_types=chart.get("supported_chart_types", [])
+        supported_chart_types=chart.get("supported_chart_types", []),
+        custom_title=chart.get("custom_title"),
+        is_visible=chart.get("is_visible", True)
     )
 
 
@@ -164,6 +204,7 @@ def get_dashboard(
     ]
 
     charts_config = build_dashboard_charts(kpi_dicts)
+    charts_config = apply_dashboard_configs(charts_config, db, project_id)
 
     connector = get_connector(connection)
 
@@ -255,6 +296,7 @@ def refresh_dashboard(
         ]
 
         charts_config = build_dashboard_charts(kpi_dicts)
+        charts_config = apply_dashboard_configs(charts_config, db, project_id)
         chart_responses = [
             build_chart_response(chart, mode_str, project_id, connector)
             for chart in charts_config

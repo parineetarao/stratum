@@ -62,6 +62,8 @@ class DashboardChart(BaseModel):
     donut_max: Optional[float] = None
     chart_data: Optional[List[ChartDataPoint]] = None
     supported_chart_types: List[str] = []
+    custom_title: Optional[str] = None
+    is_visible: bool = True
 
 
 class DashboardResponse(BaseModel):

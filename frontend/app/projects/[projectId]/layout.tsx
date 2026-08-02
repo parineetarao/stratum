@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { AlertCircle, FolderX, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { getProjectOverview, type ProjectOverview } from '@/lib/api';
@@ -29,8 +29,10 @@ export default function ProjectWorkspaceLayout({ children }: { children: React.R
   const ready = useRequireAuth();
   const router = useRouter();
   const params = useParams<{ projectId: string }>();
+  const pathname = usePathname();
   const viewportWidth = useViewportWidth();
   const isCompact = viewportWidth < 1050;
+  const isSqlWorkspace = pathname?.endsWith('/sql') ?? false;
 
   const projectId = Number(params.projectId);
   const isValidId = Number.isInteger(projectId) && projectId > 0;
@@ -173,7 +175,13 @@ export default function ProjectWorkspaceLayout({ children }: { children: React.R
           onClose={() => setIsMobileSidebarOpen(false)}
         />
 
-        <div style={{ marginLeft: isCompact ? 0 : 232, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <div
+          style={
+            isSqlWorkspace
+              ? { marginLeft: isCompact ? 0 : 232, height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+              : { marginLeft: isCompact ? 0 : 232, minHeight: '100vh', display: 'flex', flexDirection: 'column' }
+          }
+        >
           <WorkspaceHeader
             overview={overview}
             onRenamed={() => setRetryCount((c) => c + 1)}
@@ -182,12 +190,17 @@ export default function ProjectWorkspaceLayout({ children }: { children: React.R
           />
 
           <main
-            style={{
-              flex: 1,
-              padding: isCompact ? '20px 20px 40px' : '24px 32px 48px',
-              maxWidth: 1500,
-              width: '100%',
-            }}
+            style={
+              isSqlWorkspace
+                ? { flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column' }
+                : {
+                    flex: 1,
+                    padding: isCompact ? '20px 20px 40px' : '24px 32px 48px',
+                    maxWidth: 1500,
+                    width: '100%',
+                    overflowY: 'auto',
+                  }
+            }
           >
             {children}
           </main>

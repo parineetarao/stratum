@@ -1,5 +1,5 @@
-import PlaceholderModule from '@/components/workspace/PlaceholderModule';
+import DashboardExplorer from '@/components/workspace/dashboard/DashboardExplorer';
 
 export default function DashboardPage() {
-  return <PlaceholderModule moduleName="Dashboard" />;
+  return <DashboardExplorer />;
 }
