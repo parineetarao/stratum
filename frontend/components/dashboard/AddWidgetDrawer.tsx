@@ -8,12 +8,12 @@ import { getCategoryBadgeStyle } from '@/components/workspace/kpis/KpiCard';
 
 interface AddWidgetDrawerProps {
   projectId: number;
-  availableCharts: DashboardChart[];
-  onAdd: (kpiId: number) => void;
+  hiddenCharts: DashboardChart[];
+  onAdd: (widgetKey: string) => void;
   onClose: () => void;
 }
 
-export default function AddWidgetDrawer({ projectId, availableCharts, onAdd, onClose }: AddWidgetDrawerProps) {
+export default function AddWidgetDrawer({ projectId, hiddenCharts, onAdd, onClose }: AddWidgetDrawerProps) {
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [queriesError, setQueriesError] = useState<string | null>(null);
 
@@ -56,20 +56,20 @@ export default function AddWidgetDrawer({ projectId, availableCharts, onAdd, onC
 
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: 'rgba(226, 232, 240, 0.45)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Available KPIs
+            Removed Charts
           </div>
 
-          {availableCharts.length === 0 ? (
+          {hiddenCharts.length === 0 ? (
             <p style={{ fontSize: 12.5, color: 'rgba(226, 232, 240, 0.45)' }}>
-              All approved KPIs are already visualized on the dashboard.
+              Every auto-generated chart is currently on the dashboard.
             </p>
           ) : (
             <div className="flex flex-col" style={{ gap: 8 }}>
-              {availableCharts.map((chart) => {
+              {hiddenCharts.map((chart) => {
                 const catStyle = getCategoryBadgeStyle(chart.category);
                 return (
                   <div
-                    key={chart.kpi_id}
+                    key={chart.widget_key}
                     className="flex items-center justify-between"
                     style={{
                       gap: 10,
@@ -81,7 +81,7 @@ export default function AddWidgetDrawer({ projectId, availableCharts, onAdd, onC
                   >
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#f4f4f5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {chart.kpi_name}
+                        {chart.custom_title || chart.title}
                       </div>
                       <span
                         style={{
@@ -99,7 +99,7 @@ export default function AddWidgetDrawer({ projectId, availableCharts, onAdd, onC
                     </div>
                     <button
                       type="button"
-                      onClick={() => onAdd(chart.kpi_id)}
+                      onClick={() => onAdd(chart.widget_key)}
                       className="flex items-center"
                       style={{
                         gap: 4,
@@ -130,7 +130,7 @@ export default function AddWidgetDrawer({ projectId, availableCharts, onAdd, onC
             Saved Queries
           </div>
           <p style={{ fontSize: 11.5, color: 'rgba(226, 232, 240, 0.4)', marginBottom: 10, lineHeight: 1.4 }}>
-            KPI-driven widgets are the primary dashboard workflow. Saved queries can be opened directly in the SQL Workspace.
+            The dashboard&apos;s charts are generated automatically from approved KPIs. Saved queries can be opened directly in the SQL Workspace.
           </p>
 
           {queriesError ? (

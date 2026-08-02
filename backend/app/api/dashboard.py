@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from app.database import get_db
 from app.models.user import User
@@ -8,21 +8,20 @@ from app.models.project import Project, AnalysisMode
 from app.models.connection import Connection, ConnectionType
 from app.models.kpi import KPI
 from app.schemas.dashboard import (
-    DashboardResponse, DashboardChart,
-    DashboardRefreshResponse, ChartDataPoint
+    DashboardResponse, DashboardChart, KPISummaryCard,
+    DashboardRefreshResponse, ChartConfigUpdate, ChartConfigResponse,
+    DashboardReportResponse, ReportSection
 )
 from app.api.deps import get_current_user
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector
-from app.engine.chart_selector import build_dashboard_charts, format_value
+from app.engine.chart_selector import format_value, get_supported_chart_types
 from app.engine.kpi_engine import execute_kpi_sql
-from app.engine.sandbox_engine import run_query_in_sandbox, sandbox_exists
-from app.engine.dimension_finder import extract_table_name, find_dimensions
+from app.engine.sandbox_engine import run_query_in_sandbox
+from app.engine.dashboard_chart_planner import (
+    generate_candidates, classify_result, curate, FinalizedChart
+)
 from app.models.dashboard_config import DashboardConfig
-from app.schemas.dashboard import ChartConfigUpdate, ChartConfigResponse, DashboardReportResponse, ReportSection
-from app.models.profiling import ProfilingRun
-from app.api.quality import load_profiling_tables
-from app.engine.quality_scorer import score_profile
 from app.ai.insight_generator import generate_insights
 
 router = APIRouter(prefix="/projects", tags=["Dashboard"])
@@ -38,166 +37,120 @@ def get_connector(connection: Connection):
         return CSVConnector(connection.file_path)
 
 
-def execute_breakdown_query(
-    sql: str,
-    mode: str,
-    project_id: int,
-    connector
-) -> List[ChartDataPoint]:
-    """
-    Executes a chart breakdown query (time-series or categorical) and
-    returns formatted data points. Supports both the "period" column
-    produced by time-series SQL and the "label" column produced by
-    categorical breakdown SQL.
-    """
-    try:
-        if mode == "warehouse":
-            df = run_query_in_sandbox(project_id, sql)
-        else:
-            df = connector.run_query(sql)
+def run_sql(sql: str, mode: str, project_id: int, connector):
+    if mode == "warehouse":
+        return run_query_in_sandbox(project_id, sql)
+    return connector.run_query(sql)
 
-        if df is None or len(df) == 0:
-            return []
 
-        points = []
-        for _, row in df.iterrows():
-            period = str(row.get("period", "")) if "period" in row else None
-            label = str(row.get("label", "")) if "label" in row else None
-            value = float(row.get("value", 0)) if "value" in row else None
-            points.append(ChartDataPoint(period=period, value=value, label=label))
-        return points
-    except Exception:
+def to_rows(df) -> List[dict]:
+    if df is None or len(df) == 0:
         return []
+    rows = []
+    for _, row in df.iterrows():
+        rows.append({
+            "period": str(row.get("period", "")) if "period" in row else None,
+            "label": str(row.get("label", "")) if "label" in row else None,
+            "value": float(row.get("value", 0)) if "value" in row else None,
+        })
+    return rows
 
 
-def compute_dimensions_by_kpi(
+def build_kpi_dicts(kpis: List[KPI]) -> List[dict]:
+    return [
+        {
+            "id": k.id,
+            "name": k.name,
+            "category": k.category,
+            "unit": k.unit,
+            "sql": k.sql,
+            "mode": k.mode,
+            "computed_value": k.computed_value,
+        }
+        for k in kpis
+    ]
+
+
+def build_kpi_cards(kpis: List[KPI]) -> List[KPISummaryCard]:
+    """Scalar summary cards — always the KPI's own value, never a chart."""
+    return [
+        KPISummaryCard(
+            kpi_id=k.id,
+            kpi_name=k.name,
+            category=k.category,
+            unit=k.unit,
+            computed_value=k.computed_value,
+            formatted_value=format_value(k.computed_value, k.unit or ""),
+            sql=k.sql,
+            mode=k.mode,
+        )
+        for k in kpis
+    ]
+
+
+def build_analytical_charts(
     db: Session,
     project_id: int,
-    kpis: List[KPI]
-) -> dict:
+    kpi_dicts: List[dict],
+    connector
+) -> List[DashboardChart]:
     """
-    For each approved KPI, looks up the discovered schema columns on
-    its source table so chart_selector can decide whether a real
-    time-series or categorical breakdown is possible.
+    Generates the curated set of analytical breakdown charts: every
+    candidate is executed, validated (rejecting anything that resolves
+    to fewer than 2 rows — indistinguishable from a scalar value), then
+    narrowed to a diverse final set and overlaid with any saved config.
     """
-    dimensions_by_kpi = {}
-    for kpi in kpis:
-        table_name = extract_table_name(kpi.sql)
-        dimensions_by_kpi[kpi.id] = find_dimensions(db, project_id, table_name)
-    return dimensions_by_kpi
+    candidates = generate_candidates(db, project_id, kpi_dicts)
 
+    finalized: List[FinalizedChart] = []
+    for candidate in candidates:
+        try:
+            df = run_sql(candidate.sql, candidate.mode, project_id, connector)
+            rows = to_rows(df)
+        except Exception:
+            rows = []
+        result = classify_result(candidate, rows)
+        if result:
+            finalized.append(result)
 
-def apply_dashboard_configs(
-    charts_config: List[dict],
-    db: Session,
-    project_id: int
-) -> List[dict]:
-    """
-    Overlays any saved DashboardConfig rows onto the auto-computed
-    chart configs, so user customizations (chart type, custom title,
-    size, position, visibility) persist across refreshes.
-    """
+    curated = curate(finalized)
+
     configs = db.query(DashboardConfig).filter(
         DashboardConfig.project_id == project_id
     ).all()
-    configs_by_kpi = {c.kpi_id: c for c in configs}
+    configs_by_key = {c.widget_key: c for c in configs}
 
-    for chart in charts_config:
-        config = configs_by_kpi.get(chart.get("kpi_id"))
-        if not config:
-            continue
-        if config.chart_type:
-            chart["chart_type"] = config.chart_type
-        if config.custom_title:
-            chart["custom_title"] = config.custom_title
-            chart["title"] = config.custom_title
-        if config.color_scheme:
-            chart["color_scheme"] = config.color_scheme
-        if config.x_label:
-            chart["x_label"] = config.x_label
-        if config.y_label:
-            chart["y_label"] = config.y_label
-        chart["grid_position"] = config.grid_position
-        chart["grid_width"] = config.grid_width
-        chart["is_visible"] = config.is_visible
+    charts = []
+    for i, chart in enumerate(curated):
+        config = configs_by_key.get(chart.widget_key)
+        custom_title = config.custom_title if config else None
+        charts.append(DashboardChart(
+            widget_key=chart.widget_key,
+            title=custom_title or chart.title,
+            custom_title=custom_title,
+            # A saved config only overrides a field the user actually
+            # touched — an untouched field (None) always falls back to
+            # the freshly computed value, never a generic hardcoded one.
+            chart_type=config.chart_type if config and config.chart_type is not None else chart.chart_type,
+            chart_form=chart.chart_form,
+            value_label=chart.value_label,
+            sql=chart.sql,
+            mode=chart.mode,
+            unit=chart.unit,
+            category=chart.category,
+            source_kpi_id=chart.source_kpi_id,
+            chart_data=[
+                {"period": r["period"], "value": r["value"], "label": r["label"]}
+                for r in chart.rows
+            ],
+            grid_position=config.grid_position if config and config.grid_position is not None else i,
+            grid_width=config.grid_width if config and config.grid_width is not None else 6,
+            is_visible=config.is_visible if config and config.is_visible is not None else True,
+            supported_chart_types=get_supported_chart_types(chart.unit),
+        ))
 
-    charts_config.sort(key=lambda c: c.get("grid_position") or 0)
-    return charts_config
-
-
-def build_chart_response(
-    chart: dict,
-    mode: str,
-    project_id: int,
-    connector
-) -> DashboardChart:
-    """
-    Builds a complete DashboardChart object, executing the derived
-    breakdown query (time-series or categorical) if one was selected.
-
-    A breakdown is only ever meaningful with 2+ resulting rows — a
-    single-row result is indistinguishable from the KPI's own scalar
-    value, so it is downgraded to a plain summary card instead of
-    rendering a one-bar chart.
-    """
-    chart_data = None
-    chart_type = chart.get("chart_type", "card")
-    chart_form = chart.get("chart_form")
-    title = chart.get("title", "")
-    value_label = chart.get("value_label", "")
-    has_chart = chart.get("has_chart", False)
-    breakdown_sql = chart.get("timeseries_sql") or chart.get("breakdown_sql")
-
-    if has_chart and breakdown_sql and chart_type in ("line", "bar", "horizontal_bar", "area"):
-        chart_data = execute_breakdown_query(breakdown_sql, mode, project_id, connector)
-        if not chart_data or len(chart_data) < 2:
-            chart_data = None
-            has_chart = False
-            chart_type = "card"
-            chart_form = None
-            title = chart.get("kpi_name", title)
-            value_label = ""
-
-            fallback = chart.get("fallback")
-            if fallback and fallback.get("breakdown_sql"):
-                fallback_data = execute_breakdown_query(
-                    fallback["breakdown_sql"], mode, project_id, connector
-                )
-                if fallback_data and len(fallback_data) >= 2:
-                    chart_data = fallback_data
-                    chart_type = fallback["chart_type"]
-                    chart_form = fallback["chart_form"]
-                    title = fallback["title"]
-                    value_label = fallback["value_label"]
-                    has_chart = True
-
-    return DashboardChart(
-        kpi_id=chart["kpi_id"],
-        kpi_name=chart["kpi_name"],
-        category=chart.get("category"),
-        unit=chart.get("unit"),
-        computed_value=chart.get("computed_value"),
-        formatted_value=chart.get("formatted_value", "N/A"),
-        sql=chart.get("sql", ""),
-        mode=chart.get("mode", "source"),
-        chart_type=chart_type,
-        chart_form=chart_form,
-        title=title,
-        value_label=value_label,
-        has_chart=has_chart,
-        color_scheme=chart.get("color_scheme", "default"),
-        x_label=chart.get("x_label"),
-        y_label=chart.get("y_label"),
-        grid_position=chart.get("grid_position", 0),
-        grid_width=chart.get("grid_width", 6),
-        timeseries_sql=chart.get("timeseries_sql"),
-        donut_value=chart.get("donut_value"),
-        donut_max=chart.get("donut_max"),
-        chart_data=chart_data,
-        supported_chart_types=chart.get("supported_chart_types", []),
-        custom_title=chart.get("custom_title"),
-        is_visible=chart.get("is_visible", True)
-    )
+    charts.sort(key=lambda c: c.grid_position)
+    return charts
 
 
 @router.get("/{project_id}/dashboard", response_model=DashboardResponse)
@@ -207,9 +160,9 @@ def get_dashboard(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Assembles the complete dashboard from all approved KPIs.
-    Selects chart types, executes time series queries for line charts,
-    and returns everything the frontend needs to render the dashboard.
+    Assembles the dashboard: scalar KPI summary cards plus a curated
+    set of analytical breakdown charts derived from those KPIs'
+    measures and the schema's own dimensions/relationships.
     """
     project = db.query(Project).filter(
         Project.id == project_id,
@@ -238,33 +191,10 @@ def get_dashboard(
     if not connection:
         raise HTTPException(status_code=404, detail="No connection found")
 
-    kpi_dicts = [
-        {
-            "id": k.id,
-            "name": k.name,
-            "description": k.description,
-            "category": k.category,
-            "unit": k.unit,
-            "sql": k.sql,
-            "mode": k.mode,
-            "computed_value": k.computed_value,
-            "confidence_score": k.confidence_score,
-            "is_approved": k.is_approved
-        }
-        for k in approved_kpis
-    ]
-
-    dimensions_by_kpi = compute_dimensions_by_kpi(db, project_id, approved_kpis)
-    charts_config = build_dashboard_charts(kpi_dicts, dimensions_by_kpi)
-    charts_config = apply_dashboard_configs(charts_config, db, project_id)
-
     connector = get_connector(connection)
-
     try:
-        chart_responses = [
-            build_chart_response(chart, mode_str, project_id, connector)
-            for chart in charts_config
-        ]
+        kpi_dicts = build_kpi_dicts(approved_kpis)
+        charts = build_analytical_charts(db, project_id, kpi_dicts, connector)
     finally:
         if hasattr(connector, 'dispose'):
             connector.dispose()
@@ -278,8 +208,9 @@ def get_dashboard(
         domain=domain_str,
         mode=mode_str,
         total_kpis=len(approved_kpis),
-        charts=chart_responses,
-        last_refreshed=datetime.utcnow().isoformat()
+        kpi_cards=build_kpi_cards(approved_kpis),
+        charts=charts,
+        last_refreshed=datetime.now(timezone.utc).isoformat()
     )
 
 
@@ -291,9 +222,8 @@ def refresh_dashboard(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Re-executes all approved KPI SQL queries and updates stored values.
-    Called when the user clicks the Refresh button on the dashboard.
-    Returns updated chart data with fresh values.
+    Re-executes all approved KPI SQL queries and updates stored values,
+    then rebuilds the analytical charts from the refreshed data.
     """
     project = db.query(Project).filter(
         Project.id == project_id,
@@ -323,37 +253,15 @@ def refresh_dashboard(
         raise HTTPException(status_code=404, detail="No connection found")
 
     connector = get_connector(connection)
-
     try:
         for kpi in approved_kpis:
-            new_value = execute_kpi_sql(
-                kpi.sql, mode_str, project_id, connector
-            )
-            kpi.computed_value = new_value
+            kpi.computed_value = execute_kpi_sql(kpi.sql, mode_str, project_id, connector)
         db.commit()
         for k in approved_kpis:
             db.refresh(k)
 
-        kpi_dicts = [
-            {
-                "id": k.id,
-                "name": k.name,
-                "category": k.category,
-                "unit": k.unit,
-                "sql": k.sql,
-                "mode": k.mode,
-                "computed_value": k.computed_value
-            }
-            for k in approved_kpis
-        ]
-
-        dimensions_by_kpi = compute_dimensions_by_kpi(db, project_id, approved_kpis)
-        charts_config = build_dashboard_charts(kpi_dicts, dimensions_by_kpi)
-        charts_config = apply_dashboard_configs(charts_config, db, project_id)
-        chart_responses = [
-            build_chart_response(chart, mode_str, project_id, connector)
-            for chart in charts_config
-        ]
+        kpi_dicts = build_kpi_dicts(approved_kpis)
+        charts = build_analytical_charts(db, project_id, kpi_dicts, connector)
     finally:
         if hasattr(connector, 'dispose'):
             connector.dispose()
@@ -361,22 +269,24 @@ def refresh_dashboard(
     return DashboardRefreshResponse(
         project_id=project_id,
         refreshed_kpis=len(approved_kpis),
-        charts=chart_responses,
-        last_refreshed=datetime.utcnow().isoformat()
+        kpi_cards=build_kpi_cards(approved_kpis),
+        charts=charts,
+        last_refreshed=datetime.now(timezone.utc).isoformat()
     )
 
-@router.post("/{project_id}/dashboard/config/{kpi_id}",
+
+@router.post("/{project_id}/dashboard/config/{widget_key}",
              response_model=ChartConfigResponse)
 def save_chart_config(
     project_id: int,
-    kpi_id: int,
+    widget_key: str,
     config: ChartConfigUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Saves or updates chart configuration for a specific KPI.
-    Called when user changes chart type, colors, labels, or position.
+    Saves or updates chart configuration for a specific widget.
+    Called when the user changes chart type, title, size, or visibility.
     """
     project = db.query(Project).filter(
         Project.id == project_id,
@@ -387,7 +297,7 @@ def save_chart_config(
 
     existing = db.query(DashboardConfig).filter(
         DashboardConfig.project_id == project_id,
-        DashboardConfig.kpi_id == kpi_id
+        DashboardConfig.widget_key == widget_key
     ).first()
 
     if existing:
@@ -397,18 +307,14 @@ def save_chart_config(
         db.refresh(existing)
         return existing
     else:
+        # Only the fields this request actually set are stored — an
+        # absent field stays None so it defers to the freshly computed
+        # value on every load, instead of locking in a generic default
+        # (e.g. "bar") for everything the caller didn't touch.
         new_config = DashboardConfig(
             project_id=project_id,
-            kpi_id=kpi_id,
-            chart_type=config.chart_type or "bar",
-            custom_title=config.custom_title,
-            color_scheme=config.color_scheme or "default",
-            x_label=config.x_label,
-            y_label=config.y_label,
-            grid_position=config.grid_position or 0,
-            grid_width=config.grid_width or 6,
-            is_visible=config.is_visible if config.is_visible is not None else True,
-            chart_options=config.chart_options
+            widget_key=widget_key,
+            **config.dict(exclude_none=True)
         )
         db.add(new_config)
         db.commit()
@@ -427,9 +333,6 @@ def generate_dashboard_report(
     Generates a structured report of the entire project analysis.
     Contains quality score, KPI summary, and AI insights.
     Frontend uses this data to generate a downloadable PDF.
-    The backend provides the structured data, frontend handles PDF rendering.
-    This keeps PDF generation in the browser where it is fastest
-    and avoids server-side PDF library dependencies.
     """
     project = db.query(Project).filter(
         Project.id == project_id,
@@ -473,7 +376,6 @@ def generate_dashboard_report(
 
     insights_result = None
     if approved_kpis:
-        from app.ai.insight_generator import generate_insights
         insights_result = generate_insights(
             domain=domain_str,
             kpis=kpi_summary,
@@ -509,7 +411,7 @@ def generate_dashboard_report(
         project_id=project_id,
         project_name=project.name,
         domain=domain_str,
-        generated_at=datetime.utcnow().isoformat(),
+        generated_at=datetime.now(timezone.utc).isoformat(),
         quality_score=quality_score,
         total_kpis=len(approved_kpis),
         kpi_summary=kpi_summary,

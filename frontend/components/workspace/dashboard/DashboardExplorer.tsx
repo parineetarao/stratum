@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, BarChart3, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -13,6 +13,7 @@ import {
   type DashboardChart,
   type InsightsResponse,
   type KPIItem,
+  type KPISummaryCard,
 } from '@/lib/api';
 import { useWorkspace } from '@/components/workspace/WorkspaceContext';
 import DashboardHeader from '@/components/dashboard/DashboardHeader';
@@ -27,25 +28,6 @@ type PageState = 'loading' | 'no_kpis' | 'failed' | 'ready';
 
 const SIZE_TO_WIDTH: Record<ChartSize, number> = { small: 4, medium: 6, large: 12 };
 const MAX_SUMMARY_CARDS = 6;
-const MAX_GRID_CHARTS = 6;
-
-function curateChartVisibility(chartable: DashboardChart[]): Set<number> {
-  if (chartable.length <= MAX_GRID_CHARTS) {
-    return new Set(chartable.map((c) => c.kpi_id));
-  }
-  const picked: DashboardChart[] = [];
-  const pickFirst = (type: string) => {
-    const found = chartable.find((c) => c.chart_type === type && !picked.includes(c));
-    if (found) picked.push(found);
-  };
-  pickFirst('line');
-  pickFirst('donut');
-  for (const c of chartable) {
-    if (picked.length >= MAX_GRID_CHARTS) break;
-    if (!picked.includes(c)) picked.push(c);
-  }
-  return new Set(picked.slice(0, MAX_GRID_CHARTS).map((c) => c.kpi_id));
-}
 
 export default function DashboardExplorer() {
   const { overview } = useWorkspace();
@@ -56,19 +38,19 @@ export default function DashboardExplorer() {
   const [projectName, setProjectName] = useState(overview.project.name);
   const [domain, setDomain] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
+  const [kpiCards, setKpiCards] = useState<KPISummaryCard[]>([]);
   const [charts, setCharts] = useState<DashboardChart[]>([]);
   const [kpiItemsById, setKpiItemsById] = useState<Record<number, KPIItem>>({});
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedKpiId, setSelectedKpiId] = useState<number | null>(null);
+  const [highlightedWidgetKey, setHighlightedWidgetKey] = useState<string | null>(null);
   const [isAddWidgetOpen, setIsAddWidgetOpen] = useState(false);
 
   const [insights, setInsights] = useState<InsightsResponse | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
-
-  const hasCuratedRef = useRef(false);
 
   const load = useCallback(async () => {
     setPageState('loading');
@@ -81,6 +63,7 @@ export default function DashboardExplorer() {
       setProjectName(dashboard.project_name);
       setDomain(dashboard.domain);
       setLastRefreshed(dashboard.last_refreshed);
+      setKpiCards(dashboard.kpi_cards);
       setCharts(dashboard.charts);
       if (kpiRes) {
         const map: Record<number, KPIItem> = {};
@@ -105,42 +88,16 @@ export default function DashboardExplorer() {
     load();
   }, [load]);
 
-  // One-time automatic curation: pick a balanced 4-6 chart subset from the
-  // KPIs that support charts, and hide the rest (persisted so it's stable
-  // on subsequent loads).
-  useEffect(() => {
-    if (pageState !== 'ready' || hasCuratedRef.current) return;
-    const chartable = charts.filter((c) => c.has_chart);
-    const alreadyConfigured = chartable.some((c) => c.grid_position !== 0 || c.is_visible === false);
-    if (alreadyConfigured || chartable.length <= MAX_GRID_CHARTS) {
-      hasCuratedRef.current = true;
-      return;
-    }
-    hasCuratedRef.current = true;
-    const toShow = curateChartVisibility(chartable);
-    const toHide = chartable.filter((c) => !toShow.has(c.kpi_id));
-    if (toHide.length === 0) return;
+  const summaryCards = useMemo(() => kpiCards.slice(0, MAX_SUMMARY_CARDS), [kpiCards]);
+  const gridCharts = useMemo(() => charts.filter((c) => c.is_visible), [charts]);
+  const hiddenCharts = useMemo(() => charts.filter((c) => !c.is_visible), [charts]);
+  const selectedKpi = kpiCards.find((k) => k.kpi_id === selectedKpiId) || null;
+  const relatedChart = selectedKpi
+    ? charts.find((c) => c.source_kpi_id === selectedKpi.kpi_id)
+    : undefined;
 
-    setCharts((prev) => prev.map((c) => (toHide.some((h) => h.kpi_id === c.kpi_id) ? { ...c, is_visible: false } : c)));
-    toHide.forEach((c) => {
-      saveChartConfig(projectId, c.kpi_id, { is_visible: false }).catch(() => {});
-    });
-  }, [pageState, charts, projectId]);
-
-  const summaryCharts = useMemo(() => charts.slice(0, MAX_SUMMARY_CARDS), [charts]);
-  const gridCharts = useMemo(
-    () => charts.filter((c) => c.has_chart && c.is_visible).slice(0, MAX_GRID_CHARTS),
-    [charts]
-  );
-  const addableCharts = useMemo(
-    () => charts.filter((c) => !gridCharts.some((g) => g.kpi_id === c.kpi_id)),
-    [charts, gridCharts]
-  );
-
-  const selectedChart = charts.find((c) => c.kpi_id === selectedKpiId) || null;
-
-  function updateChart(kpiId: number, patch: Partial<DashboardChart>) {
-    setCharts((prev) => prev.map((c) => (c.kpi_id === kpiId ? { ...c, ...patch } : c)));
+  function updateChart(widgetKey: string, patch: Partial<DashboardChart>) {
+    setCharts((prev) => prev.map((c) => (c.widget_key === widgetKey ? { ...c, ...patch } : c)));
   }
 
   async function handleRefresh() {
@@ -148,6 +105,7 @@ export default function DashboardExplorer() {
     setErrorMessage(null);
     try {
       const res = await refreshDashboard(projectId);
+      setKpiCards(res.kpi_cards);
       setCharts(res.charts);
       setLastRefreshed(res.last_refreshed);
     } catch (err) {
@@ -163,7 +121,7 @@ export default function DashboardExplorer() {
     try {
       await Promise.all(
         charts.map((c, index) =>
-          saveChartConfig(projectId, c.kpi_id, {
+          saveChartConfig(projectId, c.widget_key, {
             chart_type: c.chart_type,
             custom_title: c.custom_title || undefined,
             grid_position: index,
@@ -181,42 +139,48 @@ export default function DashboardExplorer() {
 
   function handleSelectKpi(kpiId: number) {
     setSelectedKpiId(kpiId);
-    const el = document.getElementById(`chart-tile-${kpiId}`);
+  }
+
+  function handleViewRelatedChart() {
+    if (!relatedChart) return;
+    setSelectedKpiId(null);
+    setHighlightedWidgetKey(relatedChart.widget_key);
+    const el = document.getElementById(`chart-tile-${relatedChart.widget_key}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
-  function handleChangeType(kpiId: number, chartType: string) {
-    updateChart(kpiId, { chart_type: chartType });
-    saveChartConfig(projectId, kpiId, { chart_type: chartType }).catch(() => {
+  function handleChangeType(widgetKey: string, chartType: string) {
+    updateChart(widgetKey, { chart_type: chartType });
+    saveChartConfig(projectId, widgetKey, { chart_type: chartType }).catch(() => {
       setErrorMessage('Failed to save chart type change.');
     });
   }
 
-  function handleRename(kpiId: number, title: string) {
-    updateChart(kpiId, { custom_title: title, title });
-    saveChartConfig(projectId, kpiId, { custom_title: title }).catch(() => {
+  function handleRename(widgetKey: string, title: string) {
+    updateChart(widgetKey, { custom_title: title });
+    saveChartConfig(projectId, widgetKey, { custom_title: title }).catch(() => {
       setErrorMessage('Failed to save chart title.');
     });
   }
 
-  function handleResize(kpiId: number, size: ChartSize) {
+  function handleResize(widgetKey: string, size: ChartSize) {
     const width = SIZE_TO_WIDTH[size];
-    updateChart(kpiId, { grid_width: width });
-    saveChartConfig(projectId, kpiId, { grid_width: width }).catch(() => {
+    updateChart(widgetKey, { grid_width: width });
+    saveChartConfig(projectId, widgetKey, { grid_width: width }).catch(() => {
       setErrorMessage('Failed to save chart size.');
     });
   }
 
-  function handleRemoveFromGrid(kpiId: number) {
-    updateChart(kpiId, { is_visible: false });
-    saveChartConfig(projectId, kpiId, { is_visible: false }).catch(() => {
+  function handleRemoveFromGrid(widgetKey: string) {
+    updateChart(widgetKey, { is_visible: false });
+    saveChartConfig(projectId, widgetKey, { is_visible: false }).catch(() => {
       setErrorMessage('Failed to update chart visibility.');
     });
   }
 
-  function handleAddWidget(kpiId: number) {
-    updateChart(kpiId, { is_visible: true });
-    saveChartConfig(projectId, kpiId, { is_visible: true }).catch(() => {
+  function handleAddWidget(widgetKey: string) {
+    updateChart(widgetKey, { is_visible: true });
+    saveChartConfig(projectId, widgetKey, { is_visible: true }).catch(() => {
       setErrorMessage('Failed to add widget.');
     });
     setIsAddWidgetOpen(false);
@@ -342,11 +306,11 @@ export default function DashboardExplorer() {
         className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6"
         style={{ gap: 16, marginBottom: 28 }}
       >
-        {summaryCharts.map((chart) => (
+        {summaryCards.map((kpi) => (
           <DashboardKpiCard
-            key={chart.kpi_id}
-            chart={chart}
-            isSelected={selectedKpiId === chart.kpi_id}
+            key={kpi.kpi_id}
+            kpi={kpi}
+            isSelected={selectedKpiId === kpi.kpi_id}
             onSelect={handleSelectKpi}
           />
         ))}
@@ -355,7 +319,7 @@ export default function DashboardExplorer() {
       <ChartGrid
         charts={gridCharts}
         projectId={projectId}
-        highlightedKpiId={selectedKpiId}
+        highlightedWidgetKey={highlightedWidgetKey}
         onChangeType={handleChangeType}
         onRename={handleRename}
         onResize={handleResize}
@@ -371,19 +335,21 @@ export default function DashboardExplorer() {
         onExport={handleExportInsights}
       />
 
-      {selectedChart && (
+      {selectedKpi && (
         <KpiDetailsDrawer
-          chart={selectedChart}
-          kpiItem={kpiItemsById[selectedChart.kpi_id]}
+          kpi={selectedKpi}
+          kpiItem={kpiItemsById[selectedKpi.kpi_id]}
+          relatedChart={relatedChart}
           projectId={projectId}
           onClose={() => setSelectedKpiId(null)}
+          onViewRelatedChart={handleViewRelatedChart}
         />
       )}
 
       {isAddWidgetOpen && (
         <AddWidgetDrawer
           projectId={projectId}
-          availableCharts={addableCharts}
+          hiddenCharts={hiddenCharts}
           onAdd={handleAddWidget}
           onClose={() => setIsAddWidgetOpen(false)}
         />

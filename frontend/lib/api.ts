@@ -1161,7 +1161,7 @@ export async function bulkApproveHighConfidenceKpis(projectId: number, mode?: st
 // Dashboard
 // ---------------------------------------------------------------------------
 
-export type DashboardChartType = 'line' | 'bar' | 'horizontal_bar' | 'donut' | 'pie' | 'area' | 'card' | 'table';
+export type DashboardChartType = 'line' | 'bar' | 'horizontal_bar' | 'donut' | 'pie' | 'area' | 'table';
 
 export interface DashboardChartDataPoint {
   period: string | null;
@@ -1169,7 +1169,8 @@ export interface DashboardChartDataPoint {
   label: string | null;
 }
 
-export interface DashboardChart {
+/** A scalar KPI value for the top summary row — never a chart. */
+export interface KPISummaryCard {
   kpi_id: number;
   kpi_name: string;
   category: string | null;
@@ -1178,23 +1179,29 @@ export interface DashboardChart {
   formatted_value: string;
   sql: string;
   mode: string;
-  chart_type: string;
-  chart_form?: string | null;
+  aggregation?: string | null;
+}
+
+/** An analytical breakdown widget: always grouped, ranked, compositional,
+ * or time-series data — never a single scalar row. Independent of any
+ * one KPI (a KPI's measure can power more than one distinct chart). */
+export interface DashboardChart {
+  widget_key: string;
   title: string;
-  value_label: string;
-  has_chart: boolean;
-  color_scheme?: string;
-  x_label?: string | null;
-  y_label?: string | null;
-  grid_position?: number;
-  grid_width?: number;
-  timeseries_sql?: string | null;
-  donut_value?: number | null;
-  donut_max?: number | null;
-  chart_data?: DashboardChartDataPoint[] | null;
-  supported_chart_types: string[];
   custom_title?: string | null;
+  chart_type: string;
+  chart_form: string;
+  value_label: string;
+  sql: string;
+  mode: string;
+  unit: string | null;
+  category: string | null;
+  source_kpi_id: number | null;
+  chart_data: DashboardChartDataPoint[];
+  grid_position: number;
+  grid_width: number;
   is_visible: boolean;
+  supported_chart_types: string[];
 }
 
 export interface DashboardResponse {
@@ -1203,6 +1210,7 @@ export interface DashboardResponse {
   domain: string;
   mode: string;
   total_kpis: number;
+  kpi_cards: KPISummaryCard[];
   charts: DashboardChart[];
   last_refreshed: string;
 }
@@ -1210,6 +1218,7 @@ export interface DashboardResponse {
 export interface DashboardRefreshResponse {
   project_id: number;
   refreshed_kpis: number;
+  kpi_cards: KPISummaryCard[];
   charts: DashboardChart[];
   last_refreshed: string;
 }
@@ -1229,7 +1238,8 @@ export interface ChartConfigUpdate {
 export interface ChartConfigResponse {
   id: number;
   project_id: number;
-  kpi_id: number;
+  widget_key: string;
+  kpi_id: number | null;
   chart_type: string;
   custom_title: string | null;
   color_scheme: string | null;
@@ -1266,11 +1276,11 @@ export async function refreshDashboard(projectId: number): Promise<DashboardRefr
 
 export async function saveChartConfig(
   projectId: number,
-  kpiId: number,
+  widgetKey: string,
   config: ChartConfigUpdate
 ): Promise<ChartConfigResponse> {
   const { data } = await apiClient.post<ChartConfigResponse>(
-    `/projects/${projectId}/dashboard/config/${kpiId}`,
+    `/projects/${projectId}/dashboard/config/${encodeURIComponent(widgetKey)}`,
     config
   );
   return data;

@@ -21,10 +21,10 @@ interface ChartTileProps {
   chart: DashboardChart;
   projectId: number;
   isHighlighted: boolean;
-  onChangeType: (kpiId: number, chartType: string) => void;
-  onRename: (kpiId: number, title: string) => void;
-  onResize: (kpiId: number, size: ChartSize) => void;
-  onRemove: (kpiId: number) => void;
+  onChangeType: (widgetKey: string, chartType: string) => void;
+  onRename: (widgetKey: string, title: string) => void;
+  onResize: (widgetKey: string, size: ChartSize) => void;
+  onRemove: (widgetKey: string) => void;
 }
 
 export default function ChartTile({
@@ -40,7 +40,7 @@ export default function ChartTile({
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   const [resizeMenuOpen, setResizeMenuOpen] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(chart.custom_title || chart.kpi_name);
+  const [titleDraft, setTitleDraft] = useState(chart.custom_title || chart.title);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,14 +64,14 @@ export default function ChartTile({
   function commitTitle() {
     setIsEditingTitle(false);
     const trimmed = titleDraft.trim();
-    if (trimmed && trimmed !== (chart.custom_title || chart.kpi_name)) {
-      onRename(chart.kpi_id, trimmed);
+    if (trimmed && trimmed !== (chart.custom_title || chart.title)) {
+      onRename(chart.widget_key, trimmed);
     }
   }
 
   return (
     <div
-      id={`chart-tile-${chart.kpi_id}`}
+      id={`chart-tile-${chart.widget_key}`}
       style={{
         gridColumn: `span ${SIZE_TO_WIDTH[size]}`,
         borderRadius: 12,
@@ -95,7 +95,7 @@ export default function ChartTile({
             onKeyDown={(e) => {
               if (e.key === 'Enter') commitTitle();
               if (e.key === 'Escape') {
-                setTitleDraft(chart.custom_title || chart.kpi_name);
+                setTitleDraft(chart.custom_title || chart.title);
                 setIsEditingTitle(false);
               }
             }}
@@ -122,10 +122,10 @@ export default function ChartTile({
               textOverflow: 'ellipsis',
               cursor: 'text',
             }}
-            title={chart.custom_title || chart.kpi_name}
+            title={chart.custom_title || chart.title}
             onDoubleClick={() => setIsEditingTitle(true)}
           >
-            {chart.custom_title || chart.kpi_name}
+            {chart.custom_title || chart.title}
           </h3>
         )}
 
@@ -176,7 +176,7 @@ export default function ChartTile({
                         key={t}
                         type="button"
                         onClick={() => {
-                          onChangeType(chart.kpi_id, t);
+                          onChangeType(chart.widget_key, t);
                           setMenuOpen(false);
                           setTypeMenuOpen(false);
                         }}
@@ -233,7 +233,7 @@ export default function ChartTile({
                         key={s}
                         type="button"
                         onClick={() => {
-                          onResize(chart.kpi_id, s);
+                          onResize(chart.widget_key, s);
                           setMenuOpen(false);
                           setResizeMenuOpen(false);
                         }}
@@ -272,7 +272,7 @@ export default function ChartTile({
               <button
                 type="button"
                 onClick={() => {
-                  onRemove(chart.kpi_id);
+                  onRemove(chart.widget_key);
                   setMenuOpen(false);
                 }}
                 className="flex items-center"
@@ -287,7 +287,14 @@ export default function ChartTile({
       </div>
 
       <div style={{ flex: 1, minHeight: 220, overflow: 'auto' }}>
-        {chart.chart_type === 'table' ? (
+        {chart.chart_data.length === 0 ? (
+          <div
+            className="flex flex-col items-center justify-center"
+            style={{ height: '100%', gap: 6, color: 'rgba(226, 232, 240, 0.4)' }}
+          >
+            <span style={{ fontSize: 12.5 }}>Chart data unavailable right now</span>
+          </div>
+        ) : chart.chart_type === 'table' ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr>
@@ -300,10 +307,7 @@ export default function ChartTile({
               </tr>
             </thead>
             <tbody>
-              {(chart.chart_data && chart.chart_data.length > 0
-                ? chart.chart_data
-                : [{ period: null, value: chart.computed_value, label: chart.kpi_name }]
-              ).map((row, i) => (
+              {chart.chart_data.map((row, i) => (
                 <tr key={i}>
                   <td style={{ padding: '7px 8px', color: '#f4f4f5', borderBottom: '1px solid rgba(148, 163, 184, 0.06)' }}>
                     {row.label || row.period || '—'}

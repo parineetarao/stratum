@@ -1,47 +1,24 @@
 'use client';
 
 import { useState } from 'react';
-import type { DashboardChart } from '@/lib/api';
+import type { KPISummaryCard } from '@/lib/api';
 import { getCategoryBadgeStyle } from '@/components/workspace/kpis/KpiCard';
+import { parseSqlMeta } from './sqlMeta';
 
 interface DashboardKpiCardProps {
-  chart: DashboardChart;
+  kpi: KPISummaryCard;
   isSelected: boolean;
   onSelect: (kpiId: number) => void;
 }
 
-function Sparkline({ chart, color }: { chart: DashboardChart; color: string }) {
-  const points = chart.chart_data || [];
-  const values = points.map((p) => p.value ?? 0);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const width = 100;
-  const height = 28;
-
-  const path = values
-    .map((v, i) => {
-      const x = (i / (values.length - 1 || 1)) * width;
-      const y = height - ((v - min) / range) * height;
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
-
-  return (
-    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-export default function DashboardKpiCard({ chart, isSelected, onSelect }: DashboardKpiCardProps) {
+export default function DashboardKpiCard({ kpi, isSelected, onSelect }: DashboardKpiCardProps) {
   const [showTooltip, setShowTooltip] = useState(false);
-  const catStyle = getCategoryBadgeStyle(chart.category);
-  const hasSparkline = chart.chart_form === 'time_series' && Boolean(chart.chart_data && chart.chart_data.length >= 2);
+  const catStyle = getCategoryBadgeStyle(kpi.category);
+  const meta = parseSqlMeta(kpi.sql || '');
 
   return (
     <div
-      onClick={() => onSelect(chart.kpi_id)}
+      onClick={() => onSelect(kpi.kpi_id)}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
       style={{
@@ -65,9 +42,9 @@ export default function DashboardKpiCard({ chart, isSelected, onSelect }: Dashbo
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}
-          title={chart.custom_title || chart.kpi_name}
+          title={kpi.kpi_name}
         >
-          {chart.custom_title || chart.kpi_name}
+          {kpi.kpi_name}
         </span>
         <span
           style={{
@@ -82,7 +59,7 @@ export default function DashboardKpiCard({ chart, isSelected, onSelect }: Dashbo
             flexShrink: 0,
           }}
         >
-          {chart.category || 'General'}
+          {kpi.category || 'General'}
         </span>
       </div>
 
@@ -96,18 +73,11 @@ export default function DashboardKpiCard({ chart, isSelected, onSelect }: Dashbo
           marginBottom: 8,
         }}
       >
-        {chart.formatted_value}
+        {kpi.formatted_value}
       </div>
 
-      <div className="flex items-center justify-between" style={{ gap: 8 }}>
-        <span style={{ fontSize: 11, color: 'rgba(226, 232, 240, 0.45)' }}>
-          {chart.value_label || (chart.unit ? chart.unit.toUpperCase() : '')}
-        </span>
-        {hasSparkline && (
-          <div style={{ width: 64, flexShrink: 0 }}>
-            <Sparkline chart={chart} color={catStyle.color} />
-          </div>
-        )}
+      <div style={{ fontSize: 11, color: 'rgba(226, 232, 240, 0.45)' }}>
+        {meta.aggregation || (kpi.unit ? kpi.unit.toUpperCase() : '')}
       </div>
 
       {showTooltip && (
@@ -128,19 +98,19 @@ export default function DashboardKpiCard({ chart, isSelected, onSelect }: Dashbo
           }}
         >
           <div style={{ color: 'rgba(226, 232, 240, 0.5)', marginBottom: 8, lineHeight: 1.4 }}>
-            Recommended metric derived from {chart.mode === 'warehouse' ? 'the warehouse layer' : 'the source data'}.
+            Recommended metric derived from {kpi.mode === 'warehouse' ? 'the warehouse layer' : 'the source data'}.
           </div>
           <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
             <span style={{ color: 'rgba(226, 232, 240, 0.45)' }}>Environment</span>
-            <span style={{ color: '#f4f4f5', fontWeight: 500, textTransform: 'capitalize' }}>{chart.mode}</span>
+            <span style={{ color: '#f4f4f5', fontWeight: 500, textTransform: 'capitalize' }}>{kpi.mode}</span>
           </div>
           <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-            <span style={{ color: 'rgba(226, 232, 240, 0.45)' }}>Measure</span>
-            <span style={{ color: '#f4f4f5', fontWeight: 500 }}>{chart.value_label || '—'}</span>
+            <span style={{ color: 'rgba(226, 232, 240, 0.45)' }}>Aggregation</span>
+            <span style={{ color: '#f4f4f5', fontWeight: 500 }}>{meta.aggregation || '—'}</span>
           </div>
           <div className="flex items-center justify-between">
             <span style={{ color: 'rgba(226, 232, 240, 0.45)' }}>Unit</span>
-            <span style={{ color: '#f4f4f5', fontWeight: 500 }}>{chart.unit || '—'}</span>
+            <span style={{ color: '#f4f4f5', fontWeight: 500 }}>{kpi.unit || '—'}</span>
           </div>
         </div>
       )}

@@ -7,18 +7,18 @@ import ChartTile, { type ChartSize } from './ChartTile';
 interface ChartGridProps {
   charts: DashboardChart[];
   projectId: number;
-  highlightedKpiId: number | null;
-  onChangeType: (kpiId: number, chartType: string) => void;
-  onRename: (kpiId: number, title: string) => void;
-  onResize: (kpiId: number, size: ChartSize) => void;
-  onRemove: (kpiId: number) => void;
+  highlightedWidgetKey: string | null;
+  onChangeType: (widgetKey: string, chartType: string) => void;
+  onRename: (widgetKey: string, title: string) => void;
+  onResize: (widgetKey: string, size: ChartSize) => void;
+  onRemove: (widgetKey: string) => void;
   onAddWidget: () => void;
 }
 
 export default function ChartGrid({
   charts,
   projectId,
-  highlightedKpiId,
+  highlightedWidgetKey,
   onChangeType,
   onRename,
   onResize,
@@ -36,10 +36,10 @@ export default function ChartGrid({
     >
       {charts.map((chart) => (
         <ChartTile
-          key={chart.kpi_id}
+          key={chart.widget_key}
           chart={chart}
           projectId={projectId}
-          isHighlighted={highlightedKpiId === chart.kpi_id}
+          isHighlighted={highlightedWidgetKey === chart.widget_key}
           onChangeType={onChangeType}
           onRename={onRename}
           onResize={onResize}

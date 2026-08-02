@@ -8,7 +8,10 @@ scalar value as a one-bar chart.
 """
 
 import re
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.engine.relationship_graph import JoinPath
 
 
 def extract_measure_expression(sql: str) -> Optional[str]:
@@ -66,4 +69,73 @@ def build_categorical_sql(sql: str, dimension_column: str, limit: int = 10) -> O
         f"GROUP BY {dimension_column} "
         f"ORDER BY value DESC "
         f"LIMIT {limit}"
+    )
+
+
+def extract_where_clause(sql: str) -> Optional[str]:
+    match = re.search(r'\bWHERE\b', sql, re.IGNORECASE)
+    if not match:
+        return None
+    tail = sql[match.start():]
+    for keyword in ("GROUP BY", "ORDER BY", "LIMIT"):
+        idx = tail.upper().find(keyword)
+        if idx != -1:
+            tail = tail[:idx]
+    return tail.strip()
+
+
+def build_joined_categorical_sql(
+    kpi_sql: str,
+    base_table: str,
+    join_path: "JoinPath",
+    limit: int = 10
+) -> Optional[str]:
+    """
+    Builds a categorical breakdown of a KPI's own measure grouped by a
+    real-world dimension reached by joining across foreign keys (e.g.
+    rental -> inventory -> film_category -> category), rather than a
+    column that only exists on the KPI's own table. This is what makes
+    charts like "Revenue by Film Category" or "Top Films by Rentals"
+    possible without ever hardcoding table names.
+    """
+    measure = extract_measure_expression(kpi_sql)
+    if not measure:
+        return None
+
+    join_clauses = " ".join(
+        f"JOIN {edge.to_table} ON {edge.from_table}.{edge.from_column} = {edge.to_table}.{edge.to_column}"
+        for edge in join_path.edges
+    )
+    label_expr = f"{join_path.label_table}.{join_path.label_column}"
+    where_clause = extract_where_clause(kpi_sql)
+
+    sql = f"SELECT {label_expr}::text as label, {measure} as value FROM {base_table} {join_clauses}"
+    if where_clause:
+        sql += f" {where_clause}"
+    sql += f" GROUP BY {label_expr} ORDER BY value DESC LIMIT {limit}"
+    return sql
+
+
+# Ordinal buckets for a customer/user-level activity distribution:
+# (inclusive lower bound, inclusive upper bound, label).
+SEGMENTATION_BUCKETS = ((1, 5, "1-5"), (6, 10, "6-10"), (11, 20, "11-20"))
+
+
+def build_segmentation_sql(base_table: str, id_column: str) -> str:
+    """
+    Builds a histogram-style breakdown of how many entities (customers,
+    users, ...) fall into each activity bucket, based on how many rows
+    they have in the fact table — e.g. "Customer Activity Distribution"
+    (1-5 rentals, 6-10 rentals, ...) instead of a single average value.
+    """
+    case_lines = " ".join(
+        f"WHEN cnt BETWEEN {lo} AND {hi} THEN '{label}'" for lo, hi, label in SEGMENTATION_BUCKETS
+    )
+    overflow_label = f"{SEGMENTATION_BUCKETS[-1][1] + 1}+"
+    case_expr = f"CASE {case_lines} ELSE '{overflow_label}' END"
+
+    return (
+        f"SELECT {case_expr} as label, COUNT(*) as value, MIN(cnt) as sort_key "
+        f"FROM (SELECT {id_column}, COUNT(*) as cnt FROM {base_table} GROUP BY {id_column}) as activity_counts "
+        f"GROUP BY label ORDER BY sort_key"
     )

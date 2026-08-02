@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { CheckCircle2, ExternalLink, X } from 'lucide-react';
-import type { DashboardChart, KPIItem } from '@/lib/api';
-import { CHART_TYPE_LABELS } from './chartOptions';
+import { CheckCircle2, ExternalLink, LineChart, X } from 'lucide-react';
+import type { DashboardChart, KPIItem, KPISummaryCard } from '@/lib/api';
 import { parseSqlMeta } from './sqlMeta';
 
 interface KpiDetailsDrawerProps {
-  chart: DashboardChart;
+  kpi: KPISummaryCard;
   kpiItem: KPIItem | undefined;
+  relatedChart: DashboardChart | undefined;
   projectId: number;
   onClose: () => void;
+  onViewRelatedChart: () => void;
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -22,9 +23,16 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export default function KpiDetailsDrawer({ chart, kpiItem, projectId, onClose }: KpiDetailsDrawerProps) {
-  const meta = parseSqlMeta(chart.sql || '');
-  const sqlUrl = `/projects/${projectId}/sql?sql=${encodeURIComponent(chart.sql)}&env=${encodeURIComponent(chart.mode)}`;
+export default function KpiDetailsDrawer({
+  kpi,
+  kpiItem,
+  relatedChart,
+  projectId,
+  onClose,
+  onViewRelatedChart,
+}: KpiDetailsDrawerProps) {
+  const meta = parseSqlMeta(kpi.sql || '');
+  const sqlUrl = `/projects/${projectId}/sql?sql=${encodeURIComponent(kpi.sql)}&env=${encodeURIComponent(kpi.mode)}`;
 
   return (
     <>
@@ -48,7 +56,7 @@ export default function KpiDetailsDrawer({ chart, kpiItem, projectId, onClose }:
         }}
       >
         <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 650, color: '#f5f5f7' }}>{chart.custom_title || chart.kpi_name}</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 650, color: '#f5f5f7' }}>{kpi.kpi_name}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -83,33 +91,44 @@ export default function KpiDetailsDrawer({ chart, kpiItem, projectId, onClose }:
         <div style={{ marginBottom: 18 }}>
           <Row label="Aggregation" value={meta.aggregation || '—'} />
           <Row label="Measure" value={meta.measure || '—'} />
-          <Row label="Dimension" value={meta.dimension || '—'} />
-          <Row label="Environment" value={<span style={{ textTransform: 'capitalize' }}>{chart.mode}</span>} />
-          <Row label="Unit" value={chart.unit || '—'} />
+          <Row label="Environment" value={<span style={{ textTransform: 'capitalize' }}>{kpi.mode}</span>} />
+          <Row label="Unit" value={kpi.unit || '—'} />
           {kpiItem?.confidence_label && <Row label="Confidence" value={kpiItem.confidence_label} />}
         </div>
 
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: 'rgba(226, 232, 240, 0.45)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Supported chart types
+            Related chart
           </div>
-          <div className="flex items-center" style={{ gap: 6, flexWrap: 'wrap' }}>
-            {(chart.supported_chart_types.length ? chart.supported_chart_types : ['card']).map((t) => (
-              <span
-                key={t}
-                style={{
-                  fontSize: 11.5,
-                  padding: '3px 9px',
-                  borderRadius: 999,
-                  background: 'rgba(148, 163, 184, 0.08)',
-                  border: '1px solid rgba(148, 163, 184, 0.18)',
-                  color: 'rgba(226, 232, 240, 0.75)',
-                }}
-              >
-                {CHART_TYPE_LABELS[t] || t}
+          {relatedChart ? (
+            <button
+              type="button"
+              onClick={onViewRelatedChart}
+              className="flex items-center justify-between"
+              style={{
+                width: '100%',
+                gap: 8,
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                background: 'rgba(139, 92, 246, 0.08)',
+                color: '#c084fc',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <span className="flex items-center" style={{ gap: 7 }}>
+                <LineChart size={13} aria-hidden="true" />
+                {relatedChart.custom_title || relatedChart.title}
               </span>
-            ))}
-          </div>
+            </button>
+          ) : (
+            <p style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.4)' }}>
+              No chart-worthy breakdown was found for this KPI — it appears as a summary card only.
+            </p>
+          )}
         </div>
 
         <Link

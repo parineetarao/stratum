@@ -14,12 +14,20 @@ const CATEGORY_COLORS: Record<string, string> = {
   quality: '#22d3ee',
 };
 
+// Fixed-order categorical palette for multi-slice/multi-bar charts —
+// assigned by position, never cycled or re-derived per render.
+const SLICE_PALETTE = ['#8b7dff', '#60a5fa', '#2dd4bf', '#fbbf24', '#c084fc', '#22d3ee', '#f472b6', '#a3e635'];
+
 export function getSeriesColor(category: string | null | undefined): string {
   const cat = (category || '').toLowerCase();
   for (const key of Object.keys(CATEGORY_COLORS)) {
     if (cat.includes(key)) return CATEGORY_COLORS[key];
   }
   return '#8b7dff';
+}
+
+function sliceColor(index: number): string {
+  return SLICE_PALETTE[index % SLICE_PALETTE.length];
 }
 
 const AXIS_LABEL_STYLE = {
@@ -52,7 +60,7 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
   const points = chart.chart_data || [];
 
   if (chartType === 'line' || chartType === 'area') {
-    const categories = points.map((p) => pointLabel(p, chart.kpi_name));
+    const categories = points.map((p) => pointLabel(p, chart.title));
     const values = points.map((p) => p.value ?? 0);
     return {
       color: [color],
@@ -102,9 +110,8 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
   }
 
   if (chartType === 'bar' || chartType === 'horizontal_bar') {
-    const hasSeries = points.length > 0;
-    const categories = hasSeries ? points.map((p) => pointLabel(p, chart.kpi_name)) : [chart.kpi_name];
-    const values = hasSeries ? points.map((p) => p.value ?? 0) : [chart.computed_value ?? 0];
+    const categories = points.map((p) => pointLabel(p, chart.title));
+    const values = points.map((p) => p.value ?? 0);
     const horizontal = chartType === 'horizontal_bar';
 
     const categoryAxis = {
@@ -113,6 +120,7 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
       axisLine: { lineStyle: GRID_LINE_STYLE },
       axisTick: { show: false },
       axisLabel: AXIS_LABEL_STYLE,
+      inverse: horizontal,
     };
     const valueAxis = {
       type: 'value' as const,
@@ -122,7 +130,7 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
 
     return {
       color: [color],
-      grid: horizontal ? { left: 90, right: 20, top: 20, bottom: 20 } : { left: 44, right: 16, top: 20, bottom: 28 },
+      grid: horizontal ? { left: 110, right: 20, top: 20, bottom: 20 } : { left: 44, right: 16, top: 20, bottom: 44 },
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...TOOLTIP_BASE },
       xAxis: horizontal ? valueAxis : categoryAxis,
       yAxis: horizontal ? categoryAxis : valueAxis,
@@ -138,44 +146,37 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
   }
 
   if (chartType === 'donut' || chartType === 'pie') {
-    const value = chart.donut_value ?? chart.computed_value ?? 0;
-    const max = chart.donut_max ?? 100;
-    const remainder = Math.max(0, max - value);
+    const data = points.map((p, i) => ({
+      value: p.value ?? 0,
+      name: p.label || p.period || `Slice ${i + 1}`,
+      itemStyle: { color: sliceColor(i) },
+    }));
+
     return {
       tooltip: { trigger: 'item', ...TOOLTIP_BASE },
+      legend: {
+        show: true,
+        bottom: 0,
+        left: 'center',
+        textStyle: { color: 'rgba(226, 232, 240, 0.65)', fontSize: 11 },
+        itemWidth: 10,
+        itemHeight: 10,
+      },
       series: [
         {
           type: 'pie',
-          radius: chartType === 'donut' ? ['58%', '80%'] : ['0%', '80%'],
-          avoidLabelOverlap: false,
+          radius: chartType === 'donut' ? ['52%', '75%'] : ['0%', '75%'],
+          center: ['50%', '44%'],
+          avoidLabelOverlap: true,
           label: { show: false },
           labelLine: { show: false },
           itemStyle: {
             borderColor: '#080d16',
             borderWidth: 2,
           },
-          data: [
-            { value, name: chart.kpi_name, itemStyle: { color } },
-            { value: remainder, name: 'Remaining', itemStyle: { color: 'rgba(148, 163, 184, 0.12)' } },
-          ],
+          data,
         },
       ],
-      graphic:
-        chartType === 'donut'
-          ? [
-              {
-                type: 'text',
-                left: 'center',
-                top: 'center',
-                style: {
-                  text: chart.formatted_value,
-                  fill: '#f5f5f7',
-                  fontSize: 20,
-                  fontWeight: 700,
-                },
-              },
-            ]
-          : [],
     };
   }
 
@@ -190,12 +191,11 @@ export const CHART_TYPE_LABELS: Record<string, string> = {
   pie: 'Pie',
   area: 'Area',
   table: 'Table',
-  card: 'Card',
 };
 
 export function allowedChartTypesFor(chart: DashboardChart): string[] {
   const hasData = Boolean(chart.chart_data && chart.chart_data.length > 0);
-  if (!hasData) return ['card'];
+  if (!hasData) return [];
 
   const types = ['bar', 'horizontal_bar', 'donut', 'pie', 'table'];
   // Line/area only make sense for a genuine time-ordered series — a

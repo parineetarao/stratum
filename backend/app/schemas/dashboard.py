@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
-from datetime import datetime
 
 
 class ChartDataPoint(BaseModel):
@@ -24,22 +23,24 @@ class ChartConfigUpdate(BaseModel):
 class ChartConfigResponse(BaseModel):
     id: int
     project_id: int
-    kpi_id: int
-    chart_type: str
-    custom_title: Optional[str]
-    color_scheme: Optional[str]
-    x_label: Optional[str]
-    y_label: Optional[str]
-    grid_position: int
-    grid_width: int
-    is_visible: bool
-    chart_options: Optional[Dict[str, Any]]
+    widget_key: str
+    kpi_id: Optional[int] = None
+    chart_type: Optional[str] = None
+    custom_title: Optional[str] = None
+    color_scheme: Optional[str] = None
+    x_label: Optional[str] = None
+    y_label: Optional[str] = None
+    grid_position: Optional[int] = None
+    grid_width: Optional[int] = None
+    is_visible: Optional[bool] = None
+    chart_options: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
 
 
-class DashboardChart(BaseModel):
+class KPISummaryCard(BaseModel):
+    """A scalar KPI value for the top summary row — never a chart."""
     kpi_id: int
     kpi_name: str
     category: Optional[str]
@@ -48,23 +49,29 @@ class DashboardChart(BaseModel):
     formatted_value: str
     sql: str
     mode: str
-    chart_type: str
-    chart_form: Optional[str] = None
-    title: str
-    value_label: str
-    has_chart: bool
-    color_scheme: Optional[str] = "default"
-    x_label: Optional[str] = None
-    y_label: Optional[str] = None
-    grid_position: Optional[int] = 0
-    grid_width: Optional[int] = 6
-    timeseries_sql: Optional[str] = None
-    donut_value: Optional[float] = None
-    donut_max: Optional[float] = None
+    aggregation: Optional[str] = None
     chart_data: Optional[List[ChartDataPoint]] = None
-    supported_chart_types: List[str] = []
+
+
+class DashboardChart(BaseModel):
+    """An analytical breakdown widget — always grouped, ranked,
+    compositional, or time-series data, never a single scalar row."""
+    widget_key: str
+    title: str
     custom_title: Optional[str] = None
+    chart_type: str
+    chart_form: str
+    value_label: str
+    sql: str
+    mode: str
+    unit: Optional[str] = None
+    category: Optional[str] = None
+    source_kpi_id: Optional[int] = None
+    chart_data: List[ChartDataPoint] = []
+    grid_position: int = 0
+    grid_width: int = 6
     is_visible: bool = True
+    supported_chart_types: List[str] = []
 
 
 class DashboardResponse(BaseModel):
@@ -73,6 +80,7 @@ class DashboardResponse(BaseModel):
     domain: str
     mode: str
     total_kpis: int
+    kpi_cards: List[KPISummaryCard]
     charts: List[DashboardChart]
     last_refreshed: str
 
@@ -80,6 +88,7 @@ class DashboardResponse(BaseModel):
 class DashboardRefreshResponse(BaseModel):
     project_id: int
     refreshed_kpis: int
+    kpi_cards: List[KPISummaryCard]
     charts: List[DashboardChart]
     last_refreshed: str
 
