@@ -11,4 +11,4 @@ dist/
 build/
 .DS_Store
 stratum.db
-frontend/tsconfig.tsbuildinfo
+frontend/tsconfig.tsbuildinfofrontend/tsconfig.tsbuildinfo
