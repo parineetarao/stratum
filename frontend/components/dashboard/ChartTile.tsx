@@ -292,7 +292,7 @@ export default function ChartTile({
             <thead>
               <tr>
                 <th style={{ textAlign: 'left', padding: '6px 8px', color: 'rgba(226, 232, 240, 0.45)', borderBottom: '1px solid rgba(148, 163, 184, 0.14)' }}>
-                  Period
+                  {chart.chart_form === 'time_series' ? 'Period' : chart.value_label || 'Category'}
                 </th>
                 <th style={{ textAlign: 'right', padding: '6px 8px', color: 'rgba(226, 232, 240, 0.45)', borderBottom: '1px solid rgba(148, 163, 184, 0.14)' }}>
                   Value
@@ -302,11 +302,11 @@ export default function ChartTile({
             <tbody>
               {(chart.chart_data && chart.chart_data.length > 0
                 ? chart.chart_data
-                : [{ period: chart.kpi_name, value: chart.computed_value, label: null }]
+                : [{ period: null, value: chart.computed_value, label: chart.kpi_name }]
               ).map((row, i) => (
                 <tr key={i}>
                   <td style={{ padding: '7px 8px', color: '#f4f4f5', borderBottom: '1px solid rgba(148, 163, 184, 0.06)' }}>
-                    {row.period || '—'}
+                    {row.label || row.period || '—'}
                   </td>
                   <td style={{ padding: '7px 8px', color: '#f4f4f5', textAlign: 'right', borderBottom: '1px solid rgba(148, 163, 184, 0.06)' }}>
                     {row.value ?? '—'}

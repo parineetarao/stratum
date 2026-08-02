@@ -37,7 +37,7 @@ function Sparkline({ chart, color }: { chart: DashboardChart; color: string }) {
 export default function DashboardKpiCard({ chart, isSelected, onSelect }: DashboardKpiCardProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const catStyle = getCategoryBadgeStyle(chart.category);
-  const hasSparkline = Boolean(chart.chart_data && chart.chart_data.length >= 2);
+  const hasSparkline = chart.chart_form === 'time_series' && Boolean(chart.chart_data && chart.chart_data.length >= 2);
 
   return (
     <div

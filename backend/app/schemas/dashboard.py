@@ -49,6 +49,7 @@ class DashboardChart(BaseModel):
     sql: str
     mode: str
     chart_type: str
+    chart_form: Optional[str] = None
     title: str
     value_label: str
     has_chart: bool

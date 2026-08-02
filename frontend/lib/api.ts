@@ -1179,6 +1179,7 @@ export interface DashboardChart {
   sql: string;
   mode: string;
   chart_type: string;
+  chart_form?: string | null;
   title: string;
   value_label: string;
   has_chart: boolean;

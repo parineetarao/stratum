@@ -16,9 +16,21 @@ class PostgresConnector(BaseConnector):
 
     def _get_engine(self):
         if self.engine is None:
+            # Unqualified queries (KPI SQL, dashboard breakdowns, SQL
+            # workspace queries) are written against the connection's
+            # configured source schema, so every session on this engine
+            # needs that schema on its search_path by default — otherwise
+            # a table that only exists outside "public" (e.g. a schema
+            # like "pagila") can never be found by an unqualified FROM.
+            safe_schema = "".join(
+                c for c in (self.source_schema or "public") if c.isalnum() or c == "_"
+            ) or "public"
             self.engine = create_engine(
                 self.connection_string,
-                connect_args={"connect_timeout": 5}
+                connect_args={
+                    "connect_timeout": 5,
+                    "options": f"-c search_path={safe_schema},public"
+                }
             )
         return self.engine
 

@@ -39,10 +39,11 @@ const TOOLTIP_BASE = {
   padding: [8, 12],
 };
 
-function seriesLabel(chart: DashboardChart, period: string | null): string {
-  if (!period) return chart.kpi_name;
-  const d = new Date(period);
-  if (Number.isNaN(d.getTime())) return period;
+function pointLabel(point: { period?: string | null; label?: string | null }, fallback: string): string {
+  if (point.label) return point.label;
+  if (!point.period) return fallback;
+  const d = new Date(point.period);
+  if (Number.isNaN(d.getTime())) return point.period;
   return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
 }
 
@@ -51,7 +52,7 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
   const points = chart.chart_data || [];
 
   if (chartType === 'line' || chartType === 'area') {
-    const categories = points.map((p) => seriesLabel(chart, p.period));
+    const categories = points.map((p) => pointLabel(p, chart.kpi_name));
     const values = points.map((p) => p.value ?? 0);
     return {
       color: [color],
@@ -102,7 +103,7 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
 
   if (chartType === 'bar' || chartType === 'horizontal_bar') {
     const hasSeries = points.length > 0;
-    const categories = hasSeries ? points.map((p) => seriesLabel(chart, p.period)) : [chart.kpi_name];
+    const categories = hasSeries ? points.map((p) => pointLabel(p, chart.kpi_name)) : [chart.kpi_name];
     const values = hasSeries ? points.map((p) => p.value ?? 0) : [chart.computed_value ?? 0];
     const horizontal = chartType === 'horizontal_bar';
 
@@ -193,8 +194,12 @@ export const CHART_TYPE_LABELS: Record<string, string> = {
 };
 
 export function allowedChartTypesFor(chart: DashboardChart): string[] {
-  const hasTimeseries = Boolean(chart.chart_data && chart.chart_data.length > 0);
+  const hasData = Boolean(chart.chart_data && chart.chart_data.length > 0);
+  if (!hasData) return ['card'];
+
   const types = ['bar', 'horizontal_bar', 'donut', 'pie', 'table'];
-  if (hasTimeseries) types.unshift('area', 'line');
+  // Line/area only make sense for a genuine time-ordered series — a
+  // categorical breakdown (by store, by category, ...) isn't a trend.
+  if (chart.chart_form === 'time_series') types.unshift('area', 'line');
   return Array.from(new Set(types));
 }

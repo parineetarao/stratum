@@ -17,6 +17,7 @@ from app.connectors.csv_connector import CSVConnector
 from app.engine.chart_selector import build_dashboard_charts, format_value
 from app.engine.kpi_engine import execute_kpi_sql
 from app.engine.sandbox_engine import run_query_in_sandbox, sandbox_exists
+from app.engine.dimension_finder import extract_table_name, find_dimensions
 from app.models.dashboard_config import DashboardConfig
 from app.schemas.dashboard import ChartConfigUpdate, ChartConfigResponse, DashboardReportResponse, ReportSection
 from app.models.profiling import ProfilingRun
@@ -37,15 +38,17 @@ def get_connector(connection: Connection):
         return CSVConnector(connection.file_path)
 
 
-def execute_timeseries(
+def execute_breakdown_query(
     sql: str,
     mode: str,
     project_id: int,
     connector
 ) -> List[ChartDataPoint]:
     """
-    Executes a time series SQL query and returns formatted data points.
-    Used to populate line charts on the dashboard.
+    Executes a chart breakdown query (time-series or categorical) and
+    returns formatted data points. Supports both the "period" column
+    produced by time-series SQL and the "label" column produced by
+    categorical breakdown SQL.
     """
     try:
         if mode == "warehouse":
@@ -59,11 +62,29 @@ def execute_timeseries(
         points = []
         for _, row in df.iterrows():
             period = str(row.get("period", "")) if "period" in row else None
+            label = str(row.get("label", "")) if "label" in row else None
             value = float(row.get("value", 0)) if "value" in row else None
-            points.append(ChartDataPoint(period=period, value=value))
+            points.append(ChartDataPoint(period=period, value=value, label=label))
         return points
     except Exception:
         return []
+
+
+def compute_dimensions_by_kpi(
+    db: Session,
+    project_id: int,
+    kpis: List[KPI]
+) -> dict:
+    """
+    For each approved KPI, looks up the discovered schema columns on
+    its source table so chart_selector can decide whether a real
+    time-series or categorical breakdown is possible.
+    """
+    dimensions_by_kpi = {}
+    for kpi in kpis:
+        table_name = extract_table_name(kpi.sql)
+        dimensions_by_kpi[kpi.id] = find_dimensions(db, project_id, table_name)
+    return dimensions_by_kpi
 
 
 def apply_dashboard_configs(
@@ -111,15 +132,44 @@ def build_chart_response(
     connector
 ) -> DashboardChart:
     """
-    Builds a complete DashboardChart object including chart data
-    for time series charts.
+    Builds a complete DashboardChart object, executing the derived
+    breakdown query (time-series or categorical) if one was selected.
+
+    A breakdown is only ever meaningful with 2+ resulting rows — a
+    single-row result is indistinguishable from the KPI's own scalar
+    value, so it is downgraded to a plain summary card instead of
+    rendering a one-bar chart.
     """
     chart_data = None
+    chart_type = chart.get("chart_type", "card")
+    chart_form = chart.get("chart_form")
+    title = chart.get("title", "")
+    value_label = chart.get("value_label", "")
+    has_chart = chart.get("has_chart", False)
+    breakdown_sql = chart.get("timeseries_sql") or chart.get("breakdown_sql")
 
-    if chart.get("timeseries_sql") and chart.get("chart_type") == "line":
-        chart_data = execute_timeseries(
-            chart["timeseries_sql"], mode, project_id, connector
-        )
+    if has_chart and breakdown_sql and chart_type in ("line", "bar", "horizontal_bar", "area"):
+        chart_data = execute_breakdown_query(breakdown_sql, mode, project_id, connector)
+        if not chart_data or len(chart_data) < 2:
+            chart_data = None
+            has_chart = False
+            chart_type = "card"
+            chart_form = None
+            title = chart.get("kpi_name", title)
+            value_label = ""
+
+            fallback = chart.get("fallback")
+            if fallback and fallback.get("breakdown_sql"):
+                fallback_data = execute_breakdown_query(
+                    fallback["breakdown_sql"], mode, project_id, connector
+                )
+                if fallback_data and len(fallback_data) >= 2:
+                    chart_data = fallback_data
+                    chart_type = fallback["chart_type"]
+                    chart_form = fallback["chart_form"]
+                    title = fallback["title"]
+                    value_label = fallback["value_label"]
+                    has_chart = True
 
     return DashboardChart(
         kpi_id=chart["kpi_id"],
@@ -130,10 +180,11 @@ def build_chart_response(
         formatted_value=chart.get("formatted_value", "N/A"),
         sql=chart.get("sql", ""),
         mode=chart.get("mode", "source"),
-        chart_type=chart.get("chart_type", "card"),
-        title=chart.get("title", ""),
-        value_label=chart.get("value_label", ""),
-        has_chart=chart.get("has_chart", False),
+        chart_type=chart_type,
+        chart_form=chart_form,
+        title=title,
+        value_label=value_label,
+        has_chart=has_chart,
         color_scheme=chart.get("color_scheme", "default"),
         x_label=chart.get("x_label"),
         y_label=chart.get("y_label"),
@@ -203,7 +254,8 @@ def get_dashboard(
         for k in approved_kpis
     ]
 
-    charts_config = build_dashboard_charts(kpi_dicts)
+    dimensions_by_kpi = compute_dimensions_by_kpi(db, project_id, approved_kpis)
+    charts_config = build_dashboard_charts(kpi_dicts, dimensions_by_kpi)
     charts_config = apply_dashboard_configs(charts_config, db, project_id)
 
     connector = get_connector(connection)
@@ -295,7 +347,8 @@ def refresh_dashboard(
             for k in approved_kpis
         ]
 
-        charts_config = build_dashboard_charts(kpi_dicts)
+        dimensions_by_kpi = compute_dimensions_by_kpi(db, project_id, approved_kpis)
+        charts_config = build_dashboard_charts(kpi_dicts, dimensions_by_kpi)
         charts_config = apply_dashboard_configs(charts_config, db, project_id)
         chart_responses = [
             build_chart_response(chart, mode_str, project_id, connector)

@@ -10,3 +10,5 @@ postgres_data/
 dist/
 build/
 .DS_Store
+stratum.db
+frontend/tsconfig.tsbuildinfo
