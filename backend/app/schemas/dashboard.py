@@ -73,6 +73,13 @@ class DashboardChart(BaseModel):
     is_visible: bool = True
     color_scheme: Optional[str] = None
     supported_chart_types: List[str] = []
+    # Metadata-driven axis/tooltip labeling so the frontend never has to
+    # hardcode or guess field names/labels for a given chart.
+    x_field: str = "label"
+    y_field: str = "value"
+    x_axis_label: str = ""
+    y_axis_label: str = ""
+    series_name: str = ""
 
 
 class DashboardResponse(BaseModel):

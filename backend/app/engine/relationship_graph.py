@@ -42,6 +42,10 @@ class JoinPath:
     label_table: str
     label_column: str
     is_named_label: bool = True
+    # When set, used verbatim as the SQL label expression instead of
+    # "{label_table}.{label_column}" — e.g. a first_name || ' ' ||
+    # last_name concatenation for a person-like dimension table.
+    label_expr: Optional[str] = None
 
     @property
     def dimension_table(self) -> str:
@@ -113,6 +117,23 @@ def _named_label_column(columns: List[DiscoveredColumn]) -> Optional[str]:
     return None
 
 
+FULL_NAME_COLUMN_PAIRS = (("first_name", "last_name"),)
+
+
+def _full_name_expr(columns: List[DiscoveredColumn], table_name: str) -> Optional[str]:
+    """A person-like dimension table (staff, actor, customer, ...) has no
+    single 'name' column but a first_name/last_name pair — those are
+    individually excluded as label candidates (too identifying alone),
+    but concatenated they make a genuine, readable category label like
+    "Mike Hillyer" instead of a bare id. Generic: works for any table
+    with this column-naming convention, not just Pagila's staff table."""
+    names = {(col.column_name or "").lower(): col.column_name for col in columns}
+    for first, last in FULL_NAME_COLUMN_PAIRS:
+        if first in names and last in names:
+            return f"({table_name}.{names[first]} || ' ' || {table_name}.{names[last]})"
+    return None
+
+
 def _is_junction_table(columns: List[DiscoveredColumn]) -> bool:
     """A pure many-to-many join table (composite primary key, e.g.
     film_category) has no identity of its own worth charting by —
@@ -167,8 +188,16 @@ def find_dimension_paths(
             is_junction = _is_junction_table(columns)
 
             if edge.to_table not in seen_dimension_tables and not is_junction:
+                full_name_expr = _full_name_expr(columns, edge.to_table)
                 label_column = _named_label_column(columns)
-                if label_column:
+                if full_name_expr:
+                    seen_dimension_tables.add(edge.to_table)
+                    named_paths.append(JoinPath(
+                        edges=new_edges, label_table=edge.to_table,
+                        label_column="name", is_named_label=True,
+                        label_expr=full_name_expr,
+                    ))
+                elif label_column:
                     seen_dimension_tables.add(edge.to_table)
                     named_paths.append(JoinPath(
                         edges=new_edges, label_table=edge.to_table,

@@ -1222,6 +1222,11 @@ export interface DashboardChart {
   is_visible: boolean;
   color_scheme?: string | null;
   supported_chart_types: string[];
+  x_field: string;
+  y_field: string;
+  x_axis_label: string;
+  y_axis_label: string;
+  series_name: string;
 }
 
 export interface DashboardResponse {

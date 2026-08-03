@@ -55,15 +55,29 @@ def build_timeseries_sql(sql: str, date_column: str) -> Optional[str]:
     )
 
 
-def build_categorical_sql(sql: str, dimension_column: str, limit: int = 10) -> Optional[str]:
+def build_categorical_sql(
+    sql: str,
+    dimension_column: str,
+    limit: int = 10,
+    display_name: Optional[str] = None,
+) -> Optional[str]:
     """Builds a top-N categorical breakdown of a scalar KPI SQL, grouped
-    by the given dimension column instead of returning a single row."""
+    by the given dimension column instead of returning a single row.
+
+    When the dimension is a bare foreign-key-style id column (no readable
+    label available on the KPI's own table), display_name formats each
+    row's label as "{display_name} {id}" (e.g. "Store 1") instead of
+    exposing the raw numeric id."""
     measure = extract_measure_expression(sql)
     from_clause = extract_from_clause(sql)
     if not measure or not from_clause:
         return None
+    if display_name and dimension_column.lower().endswith("_id"):
+        label_expr = f"('{display_name} ' || {dimension_column}::text)"
+    else:
+        label_expr = f"{dimension_column}::text"
     return (
-        f"SELECT {dimension_column}::text as label, "
+        f"SELECT {label_expr} as label, "
         f"{measure} as value "
         f"{from_clause} "
         f"GROUP BY {dimension_column} "
@@ -106,7 +120,19 @@ def build_joined_categorical_sql(
         f"JOIN {edge.to_table} ON {edge.from_table}.{edge.from_column} = {edge.to_table}.{edge.to_column}"
         for edge in join_path.edges
     )
-    label_expr = f"{join_path.label_table}.{join_path.label_column}"
+    if getattr(join_path, "label_expr", None):
+        # A precomputed expression (e.g. first_name || ' ' || last_name).
+        label_expr = join_path.label_expr
+    elif join_path.is_named_label:
+        label_expr = f"{join_path.label_table}.{join_path.label_column}"
+    else:
+        # No readable label column exists on this dimension table — fall
+        # back to a business-friendly "{Dimension} {id}" label (e.g.
+        # "Store 1") instead of exposing the bare numeric id.
+        display_name = join_path.label_table.replace("_", " ").title()
+        label_expr = (
+            f"('{display_name} ' || {join_path.label_table}.{join_path.label_column}::text)"
+        )
     where_clause = extract_where_clause(kpi_sql)
 
     sql = f"SELECT {label_expr}::text as label, {measure} as value FROM {base_table} {join_clauses}"

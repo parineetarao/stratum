@@ -58,6 +58,10 @@ class ChartCandidate:
     source_kpi_id: Optional[int]
     category: Optional[str]
     dimension_table: Optional[str] = None
+    # The KPI's own business-friendly name (e.g. "Total Rentals",
+    # "Revenue") — used to build a meaningful y-axis label/series name
+    # distinct from the dimension being grouped by (value_label).
+    metric_name: str = ""
 
 
 @dataclass
@@ -73,6 +77,23 @@ class FinalizedChart:
     source_kpi_id: Optional[int]
     category: Optional[str]
     rows: List[Dict[str, Any]] = field(default_factory=list)
+    metric_name: str = ""
+
+
+def axis_metadata(chart_form: str, value_label: str, metric_name: str, unit: str) -> Dict[str, str]:
+    """
+    Derives business-friendly axis fields/labels from a finalized chart's
+    metadata, generically (no chart-specific hardcoding) so the frontend
+    never has to guess or hardcode axis titles per chart.
+    """
+    metric = metric_name or value_label or "Value"
+    y_label = f"{metric} ({unit.title()})" if unit and unit.lower() not in ("", "count") else metric
+
+    if chart_form == "time_series":
+        return {"x_field": "period", "y_field": "value", "x_axis_label": "Date", "y_axis_label": y_label, "series_name": metric}
+
+    x_label = value_label or "Category"
+    return {"x_field": "label", "y_field": "value", "x_axis_label": x_label, "y_axis_label": y_label, "series_name": metric}
 
 
 def _customer_id_column(categorical_columns: List[str]) -> Optional[str]:
@@ -127,6 +148,7 @@ def generate_candidates(db, project_id: int, kpis: List[Dict[str, Any]]) -> List
                     unit=unit,
                     source_kpi_id=kpi_id,
                     category=category,
+                    metric_name=name,
                 ))
 
         customer_col = _customer_id_column(categorical_columns)
@@ -142,6 +164,7 @@ def generate_candidates(db, project_id: int, kpis: List[Dict[str, Any]]) -> List
                 unit="count",
                 source_kpi_id=kpi_id,
                 category=category,
+                metric_name="Customers",
             ))
 
         # Joined breakdowns onto real dimension tables (category, film,
@@ -170,6 +193,7 @@ def generate_candidates(db, project_id: int, kpis: List[Dict[str, Any]]) -> List
                 source_kpi_id=kpi_id,
                 category=category,
                 dimension_table=path.dimension_table,
+                metric_name=name,
             ))
 
         # A categorical breakdown using a dimension already on the KPI's
@@ -179,9 +203,9 @@ def generate_candidates(db, project_id: int, kpis: List[Dict[str, Any]]) -> List
         # redundant (and often nonsensical) breakdown of its own.
         if categorical_columns and not all_paths:
             col = categorical_columns[0]
-            cat_sql = build_categorical_sql(sql, col, limit=CATEGORICAL_FETCH_LIMIT)
+            label = _dimension_label(col)
+            cat_sql = build_categorical_sql(sql, col, limit=CATEGORICAL_FETCH_LIMIT, display_name=label)
             if cat_sql:
-                label = _dimension_label(col)
                 candidates.append(ChartCandidate(
                     widget_key=f"kpi{kpi_id}_by_{col}",
                     title=f"{name} by {label}",
@@ -192,6 +216,7 @@ def generate_candidates(db, project_id: int, kpis: List[Dict[str, Any]]) -> List
                     unit=unit,
                     source_kpi_id=kpi_id,
                     category=category,
+                    metric_name=name,
                 ))
 
     return candidates
@@ -220,6 +245,7 @@ def classify_result(candidate: ChartCandidate, rows: List[Dict[str, Any]]) -> Op
             source_kpi_id=candidate.source_kpi_id,
             category=candidate.category,
             rows=rows,
+            metric_name=candidate.metric_name,
         )
 
     if candidate.chart_form == "segmentation":
@@ -235,6 +261,7 @@ def classify_result(candidate: ChartCandidate, rows: List[Dict[str, Any]]) -> Op
             source_kpi_id=candidate.source_kpi_id,
             category=candidate.category,
             rows=rows,
+            metric_name=candidate.metric_name,
         )
 
     # Categorical: classify by how many distinct groups actually exist.
@@ -265,6 +292,7 @@ def classify_result(candidate: ChartCandidate, rows: List[Dict[str, Any]]) -> Op
         source_kpi_id=candidate.source_kpi_id,
         category=candidate.category,
         rows=rows,
+        metric_name=candidate.metric_name,
     )
 
 

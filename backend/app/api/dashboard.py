@@ -19,7 +19,7 @@ from app.engine.chart_selector import format_value, get_supported_chart_types
 from app.engine.kpi_engine import execute_kpi_sql
 from app.engine.sandbox_engine import run_query_in_sandbox
 from app.engine.dashboard_chart_planner import (
-    generate_candidates, classify_result, curate, FinalizedChart
+    generate_candidates, classify_result, curate, FinalizedChart, axis_metadata
 )
 from app.models.dashboard_config import DashboardConfig
 from app.models.saved_query import SavedQuery
@@ -78,12 +78,39 @@ def to_rows(df) -> List[dict]:
         return []
     rows = []
     for _, row in df.iterrows():
+        raw_value = row.get("value") if "value" in row else None
+        try:
+            value = float(raw_value) if raw_value is not None else None
+        except (TypeError, ValueError):
+            value = None
         rows.append({
             "period": str(row.get("period", "")) if "period" in row else None,
             "label": str(row.get("label", "")) if "label" in row else None,
-            "value": float(row.get("value", 0)) if "value" in row else None,
+            "value": value,
         })
     return rows
+
+
+PLACEHOLDER_TITLES = {
+    "my custom title", "untitled", "chart title", "new chart",
+    "new widget", "widget title", "custom title", "title",
+}
+
+
+def _clean_custom_title(custom_title: Optional[str]) -> Optional[str]:
+    """
+    A saved custom_title is only honored if it's a real, user-meaningful
+    title. A blank/whitespace-only value or a known placeholder (e.g.
+    "My Custom Title" left over from a demo/test) is treated as if the
+    user never set one, so the freshly generated default title is shown
+    instead of a meaningless one.
+    """
+    if custom_title is None:
+        return None
+    trimmed = custom_title.strip()
+    if not trimmed or trimmed.lower() in PLACEHOLDER_TITLES:
+        return None
+    return trimmed
 
 
 def build_kpi_dicts(kpis: List[KPI]) -> List[dict]:
@@ -158,8 +185,9 @@ def build_analytical_charts(
     charts = []
     for i, chart in enumerate(finalized):
         config = configs_by_key.get(chart.widget_key)
-        custom_title = config.custom_title if config else None
+        custom_title = _clean_custom_title(config.custom_title if config else None)
         default_visible = chart.widget_key in curated_keys
+        meta = axis_metadata(chart.chart_form, chart.value_label, chart.metric_name, chart.unit)
         charts.append(DashboardChart(
             widget_key=chart.widget_key,
             title=custom_title or chart.title,
@@ -184,6 +212,11 @@ def build_analytical_charts(
             is_visible=config.is_visible if config and config.is_visible is not None else default_visible,
             color_scheme=config.color_scheme if config else None,
             supported_chart_types=get_supported_chart_types(chart.unit),
+            x_field=meta["x_field"],
+            y_field=meta["y_field"],
+            x_axis_label=meta["x_axis_label"],
+            y_axis_label=meta["y_axis_label"],
+            series_name=meta["series_name"],
         ))
 
     charts.sort(key=lambda c: c.grid_position)
@@ -240,13 +273,16 @@ def build_query_widget_charts(
                     "value": value,
                 })
 
+        custom_title = _clean_custom_title(config.custom_title)
+        x_label = x_column.replace("_", " ").title()
+        y_label = y_column.replace("_", " ").title()
         charts.append(DashboardChart(
             widget_key=config.widget_key,
-            title=config.custom_title or saved_query.name,
-            custom_title=config.custom_title,
+            title=custom_title or saved_query.name,
+            custom_title=custom_title,
             chart_type=config.chart_type or "bar",
             chart_form="categorical",
-            value_label=x_column,
+            value_label=x_label,
             sql=saved_query.sql,
             mode=saved_query.environment,
             unit="",
@@ -258,6 +294,11 @@ def build_query_widget_charts(
             is_visible=config.is_visible if config.is_visible is not None else True,
             color_scheme=config.color_scheme,
             supported_chart_types=["bar", "horizontal_bar", "line", "area", "donut", "pie", "table"],
+            x_field="label",
+            y_field="value",
+            x_axis_label=x_label,
+            y_axis_label=y_label,
+            series_name=y_label,
         ))
 
     return charts
@@ -545,13 +586,16 @@ def add_query_widget(
             "value": value,
         })
 
+    custom_title = _clean_custom_title(config.custom_title)
+    x_label = payload.x_column.replace("_", " ").title()
+    y_label = payload.y_column.replace("_", " ").title()
     return DashboardChart(
         widget_key=widget_key,
-        title=config.custom_title or saved_query.name,
-        custom_title=config.custom_title,
+        title=custom_title or saved_query.name,
+        custom_title=custom_title,
         chart_type=config.chart_type or payload.chart_type,
         chart_form="categorical",
-        value_label=payload.x_column,
+        value_label=x_label,
         sql=saved_query.sql,
         mode=saved_query.environment,
         unit="",
@@ -563,6 +607,11 @@ def add_query_widget(
         is_visible=True,
         color_scheme=config.color_scheme,
         supported_chart_types=["bar", "horizontal_bar", "line", "area", "donut", "pie", "table"],
+        x_field="label",
+        y_field="value",
+        x_axis_label=x_label,
+        y_axis_label=y_label,
+        series_name=y_label,
     )
 
 

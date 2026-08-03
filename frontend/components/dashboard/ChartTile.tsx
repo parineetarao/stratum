@@ -5,7 +5,7 @@ import Link from 'next/link';
 import ReactECharts from 'echarts-for-react';
 import { Check, ExternalLink, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import type { DashboardChart } from '@/lib/api';
-import { allowedChartTypesFor, buildChartOption, CHART_TYPE_LABELS, PALETTE_PRESETS } from './chartOptions';
+import { allowedChartTypesFor, buildChartOption, chartRenderIssue, CHART_TYPE_LABELS, PALETTE_PRESETS } from './chartOptions';
 
 export type ChartSize = 'small' | 'medium' | 'large';
 
@@ -61,7 +61,8 @@ export default function ChartTile({
   }, [menuOpen]);
 
   const size = widthToSize(chart.grid_width ?? 6);
-  const option = buildChartOption(chart, chart.chart_type);
+  const renderIssue = chartRenderIssue(chart);
+  const option = renderIssue ? {} : buildChartOption(chart, chart.chart_type);
   const allowedTypes = allowedChartTypesFor(chart);
   const sqlUrl = `/projects/${projectId}/sql?sql=${encodeURIComponent(chart.sql)}&env=${encodeURIComponent(chart.mode)}`;
 
@@ -345,6 +346,13 @@ export default function ChartTile({
             style={{ height: '100%', gap: 6, color: 'rgba(226, 232, 240, 0.4)' }}
           >
             <span style={{ fontSize: 12.5 }}>Chart data unavailable right now</span>
+          </div>
+        ) : renderIssue ? (
+          <div
+            className="flex flex-col items-center justify-center"
+            style={{ height: '100%', gap: 6, color: 'rgba(226, 232, 240, 0.4)', textAlign: 'center', padding: '0 16px' }}
+          >
+            <span style={{ fontSize: 12.5 }}>This visualization could not be generated from the available data.</span>
           </div>
         ) : chart.chart_type === 'table' ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>

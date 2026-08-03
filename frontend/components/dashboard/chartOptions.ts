@@ -59,6 +59,12 @@ const AXIS_LABEL_STYLE = {
   fontSize: 11,
 };
 
+const AXIS_NAME_STYLE = {
+  color: 'rgba(226, 232, 240, 0.55)',
+  fontSize: 11,
+  fontWeight: 600 as const,
+};
+
 const GRID_LINE_STYLE = {
   color: 'rgba(148, 163, 184, 0.1)',
 };
@@ -71,6 +77,40 @@ const TOOLTIP_BASE = {
   padding: [8, 12],
 };
 
+/** Coerces a chart_data value to a finite number — never lets a string,
+ * null, or NaN reach ECharts, which would otherwise silently render as
+ * a zero-height (or missing) bar/point. */
+export function toNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Business-friendly value formatting for tooltips/labels, mirroring the
+ * backend's format_value() semantics closely enough for display purposes
+ * (the backend remains the source of truth for KPI card values). */
+export function formatValue(value: number, unit?: string | null): string {
+  const u = (unit || '').toLowerCase();
+  if (u === 'currency') {
+    if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(value) >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+    return `$${value.toFixed(2)}`;
+  }
+  if (u === 'percentage' || u === 'rate' || u === 'ratio') return `${value.toFixed(1)}%`;
+  if (u === 'count' || u === '') {
+    if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+    return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
+  }
+  return String(Math.round(value * 100) / 100);
+}
+
+function unitSuffix(unit?: string | null): string {
+  const u = (unit || '').toLowerCase();
+  if (!u || u === 'count' || u === 'currency' || u === 'percentage' || u === 'rate' || u === 'ratio') return '';
+  return ` ${u}`;
+}
+
 function pointLabel(point: { period?: string | null; label?: string | null }, fallback: string): string {
   if (point.label) return point.label;
   if (!point.period) return fallback;
@@ -79,31 +119,129 @@ function pointLabel(point: { period?: string | null; label?: string | null }, fa
   return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
 }
 
+/** Truncates a long category label for axis display only — the full
+ * label always remains available in the tooltip. */
+function truncateLabel(label: string, maxLen: number): string {
+  if (label.length <= maxLen) return label;
+  return `${label.slice(0, maxLen - 1)}…`;
+}
+
+/**
+ * Picks the value-axis min/max. Counts/totals start at zero by default
+ * (the honest baseline). Only when the data range is narrow relative to
+ * its magnitude — where a zero baseline would flatten every bar to the
+ * same visual height — do we use a clearly labeled truncated axis, so
+ * real differences stay readable without ever exaggerating them.
+ */
+function computeValueAxis(values: number[], axisLabel: string): Record<string, unknown> {
+  const nums = values.filter((v) => Number.isFinite(v));
+  if (nums.length === 0) {
+    return { type: 'value', min: 0, name: axisLabel, nameLocation: 'middle', nameGap: 36, nameTextStyle: AXIS_NAME_STYLE, axisLabel: AXIS_LABEL_STYLE, splitLine: { lineStyle: GRID_LINE_STYLE } };
+  }
+  const max = Math.max(...nums);
+  const min = Math.min(...nums);
+  const range = max - min;
+  const isNarrow = min > 0 && range > 0 && max > 0 && range / max < 0.15;
+
+  if (isNarrow) {
+    const padding = Math.max(range * 0.6, max * 0.02);
+    return {
+      type: 'value',
+      min: Math.max(0, Math.floor(min - padding)),
+      max: Math.ceil(max + padding),
+      name: `${axisLabel} (truncated axis)`,
+      nameLocation: 'middle',
+      nameGap: 36,
+      nameTextStyle: AXIS_NAME_STYLE,
+      axisLabel: AXIS_LABEL_STYLE,
+      splitLine: { lineStyle: GRID_LINE_STYLE },
+    };
+  }
+
+  return {
+    type: 'value',
+    min: 0,
+    name: axisLabel,
+    nameLocation: 'middle',
+    nameGap: 36,
+    nameTextStyle: AXIS_NAME_STYLE,
+    axisLabel: AXIS_LABEL_STYLE,
+    splitLine: { lineStyle: GRID_LINE_STYLE },
+  };
+}
+
+/**
+ * Validates a chart is safe to render before ECharts ever sees it, per
+ * the "never render a misleading chart" requirement. Returns a reason
+ * string when the chart should be replaced with a fallback message, or
+ * null when it's good to render.
+ */
+export function chartRenderIssue(chart: DashboardChart): string | null {
+  const points = chart.chart_data || [];
+  if (chart.chart_type === 'table') return null; // tables tolerate sparse/raw data
+  if (points.length === 0) return 'no data';
+  if (chart.chart_type === 'card') return 'scalar value must render as a KPI card, not a chart';
+
+  const isTimeSeries = chart.chart_form === 'time_series';
+  const hasNumericValues = points.every((p) => p.value === null || typeof p.value === 'number');
+  if (!hasNumericValues) return 'non-numeric values';
+
+  if (!isTimeSeries && (chart.chart_type === 'bar' || chart.chart_type === 'horizontal_bar' || chart.chart_type === 'donut' || chart.chart_type === 'pie')) {
+    const labels = points.map((p) => p.label || p.period || '');
+    if (labels.some((l) => !l)) return 'missing category labels';
+    const unique = new Set(labels);
+    if (unique.size !== labels.length) return 'duplicate category labels';
+  }
+
+  if (points.length === 1 && chart.chart_type !== 'donut' && chart.chart_type !== 'pie') {
+    return 'single data point cannot be meaningfully charted';
+  }
+
+  return null;
+}
+
 export function buildChartOption(chart: DashboardChart, chartType: string): Record<string, unknown> {
   const color = getSeriesColor(chart.category, chart.color_scheme);
   const points = chart.chart_data || [];
+  const unit = chart.unit;
+  const seriesName = chart.series_name || chart.value_label || 'Value';
+  const xAxisLabel = chart.x_axis_label || (chart.chart_form === 'time_series' ? 'Date' : chart.value_label || 'Category');
+  const yAxisLabel = chart.y_axis_label || seriesName;
 
   if (chartType === 'line' || chartType === 'area') {
     const categories = points.map((p) => pointLabel(p, chart.title));
-    const values = points.map((p) => p.value ?? 0);
+    const values = points.map((p) => toNumber(p.value));
     return {
       color: [color],
-      grid: { left: 44, right: 16, top: 20, bottom: 28 },
-      tooltip: { trigger: 'axis', ...TOOLTIP_BASE },
+      grid: { left: 56, right: 16, top: 24, bottom: 44 },
+      tooltip: {
+        trigger: 'axis',
+        ...TOOLTIP_BASE,
+        formatter: (params: unknown) => {
+          const arr = Array.isArray(params) ? params : [params];
+          const first = arr[0] as { axisValue?: string; value?: number };
+          const lines = arr.map((p) => {
+            const pt = p as { seriesName?: string; value?: number };
+            return `${pt.seriesName || seriesName}: <b>${formatValue(toNumber(pt.value), unit)}${unitSuffix(unit)}</b>`;
+          });
+          return [`${first?.axisValue ?? ''}`, ...lines].join('<br/>');
+        },
+      },
       xAxis: {
         type: 'category',
         data: categories,
+        name: xAxisLabel,
+        nameLocation: 'middle',
+        nameGap: 30,
+        nameTextStyle: AXIS_NAME_STYLE,
         axisLine: { lineStyle: GRID_LINE_STYLE },
         axisTick: { show: false },
         axisLabel: AXIS_LABEL_STYLE,
       },
-      yAxis: {
-        type: 'value',
-        splitLine: { lineStyle: GRID_LINE_STYLE },
-        axisLabel: AXIS_LABEL_STYLE,
-      },
+      yAxis: computeValueAxis(values, yAxisLabel),
       series: [
         {
+          name: seriesName,
           type: 'line',
           data: values,
           smooth: true,
@@ -134,33 +272,64 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
   }
 
   if (chartType === 'bar' || chartType === 'horizontal_bar') {
-    const categories = points.map((p) => pointLabel(p, chart.title));
-    const values = points.map((p) => p.value ?? 0);
     const horizontal = chartType === 'horizontal_bar';
+    // Ranked bars must read descending — the backend already orders
+    // categorical breakdowns by value DESC, so this is a defensive
+    // re-sort in case a saved-query widget's data isn't pre-sorted.
+    const sortedPoints = [...points].sort((a, b) => toNumber(b.value) - toNumber(a.value));
+    const rawLabels = sortedPoints.map((p) => pointLabel(p, chart.title));
+    const values = sortedPoints.map((p) => toNumber(p.value));
+    const fullLabelByIndex = rawLabels;
+
+    // Long category names remain readable: horizontal bars get a wider
+    // left margin and ellipsis only past a generous length (full text
+    // stays available in the tooltip); vertical bars stay unrotated but
+    // truncate before labels start overlapping.
+    const maxLabelLen = horizontal ? 22 : 12;
+    const displayLabels = rawLabels.map((l) => truncateLabel(l, maxLabelLen));
+    const longestLabel = displayLabels.reduce((max, l) => Math.max(max, l.length), 0);
+    const leftMargin = horizontal ? Math.min(220, Math.max(90, longestLabel * 7)) : 48;
 
     const categoryAxis = {
       type: 'category' as const,
-      data: categories,
+      data: displayLabels,
+      name: horizontal ? undefined : xAxisLabel,
+      nameLocation: 'middle' as const,
+      nameGap: 34,
+      nameTextStyle: AXIS_NAME_STYLE,
       axisLine: { lineStyle: GRID_LINE_STYLE },
       axisTick: { show: false },
       axisLabel: AXIS_LABEL_STYLE,
       inverse: horizontal,
     };
-    const valueAxis = {
-      type: 'value' as const,
-      splitLine: { lineStyle: GRID_LINE_STYLE },
-      axisLabel: AXIS_LABEL_STYLE,
-    };
+    const valueAxis = computeValueAxis(values, horizontal ? xAxisLabel : yAxisLabel);
 
     return {
       color: [color],
-      grid: horizontal ? { left: 110, right: 20, top: 20, bottom: 20 } : { left: 44, right: 16, top: 20, bottom: 44 },
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...TOOLTIP_BASE },
+      grid: horizontal
+        ? { left: leftMargin, right: 24, top: 20, bottom: 36 }
+        : { left: 56, right: 16, top: 20, bottom: 56 },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        ...TOOLTIP_BASE,
+        formatter: (params: unknown) => {
+          const arr = Array.isArray(params) ? params : [params];
+          const p = arr[0] as { dataIndex?: number; value?: number };
+          const idx = p?.dataIndex ?? 0;
+          const label = fullLabelByIndex[idx] ?? '';
+          const val = toNumber(p?.value);
+          return `${label}<br/>${seriesName}: <b>${formatValue(val, unit)}${unitSuffix(unit)}</b>`;
+        },
+      },
       xAxis: horizontal ? valueAxis : categoryAxis,
       yAxis: horizontal ? categoryAxis : valueAxis,
       series: [
         {
+          name: seriesName,
           type: 'bar',
+          // Standard comparison bars are never stacked — each bar
+          // stands alone against the shared value axis.
           data: values,
           barMaxWidth: 36,
           itemStyle: { color, borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0] },
@@ -170,24 +339,41 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
   }
 
   if (chartType === 'donut' || chartType === 'pie') {
-    const data = points.map((p, i) => ({
-      value: p.value ?? 0,
-      name: p.label || p.period || `Slice ${i + 1}`,
-      itemStyle: { color: sliceColor(i, chart.color_scheme) },
-    }));
+    const total = points.reduce((sum, p) => sum + toNumber(p.value), 0);
+    const data = points.map((p, i) => {
+      const value = toNumber(p.value);
+      const label = p.label || p.period || `Slice ${i + 1}`;
+      return {
+        value,
+        name: label,
+        itemStyle: { color: sliceColor(i, chart.color_scheme) },
+      };
+    });
 
     return {
-      tooltip: { trigger: 'item', ...TOOLTIP_BASE },
+      tooltip: {
+        trigger: 'item',
+        ...TOOLTIP_BASE,
+        formatter: (params: unknown) => {
+          const p = params as { name?: string; value?: number };
+          const value = toNumber(p.value);
+          const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+          return `${p.name}<br/>${seriesName}: <b>${formatValue(value, unit)}${unitSuffix(unit)}</b> (${pct}%)`;
+        },
+      },
       legend: {
         show: true,
         bottom: 0,
         left: 'center',
+        type: 'scroll',
         textStyle: { color: 'rgba(226, 232, 240, 0.65)', fontSize: 11 },
         itemWidth: 10,
         itemHeight: 10,
+        formatter: (name: string) => truncateLabel(name, 18),
       },
       series: [
         {
+          name: seriesName,
           type: 'pie',
           radius: chartType === 'donut' ? ['52%', '75%'] : ['0%', '75%'],
           center: ['50%', '44%'],
