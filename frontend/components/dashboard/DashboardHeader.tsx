@@ -1,6 +1,6 @@
 'use client';
 
-import { RefreshCw, Save, Share2, Loader2 } from 'lucide-react';
+import { RefreshCw, Save, Share2, Loader2, Check } from 'lucide-react';
 
 interface DashboardHeaderProps {
   projectName: string;
@@ -8,6 +8,7 @@ interface DashboardHeaderProps {
   lastRefreshed: string | null;
   isRefreshing: boolean;
   isSaving: boolean;
+  lastSavedAt: string | null;
   onRefresh: () => void;
   onSave: () => void;
 }
@@ -29,6 +30,7 @@ export default function DashboardHeader({
   lastRefreshed,
   isRefreshing,
   isSaving,
+  lastSavedAt,
   onRefresh,
   onSave,
 }: DashboardHeaderProps) {
@@ -85,8 +87,18 @@ export default function DashboardHeader({
           }}
         >
           {isSaving ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
-          Save Dashboard
+          {isSaving ? 'Saving...' : 'Save Dashboard'}
         </button>
+
+        {!isSaving && lastSavedAt && (
+          <span
+            className="flex items-center"
+            style={{ gap: 5, fontSize: 11.5, color: '#4ade80', whiteSpace: 'nowrap' }}
+          >
+            <Check size={13} aria-hidden="true" />
+            Dashboard saved &middot; {timeAgo(lastSavedAt)}
+          </span>
+        )}
 
         <div className="flex items-center" style={{ gap: 0, position: 'relative' }} title="Coming soon">
           <button

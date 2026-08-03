@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertTriangle, Download, Loader2, Sparkles, TrendingUp, TrendingDown } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, ArrowRight, Download, Loader2, Sparkles, TrendingUp, TrendingDown } from 'lucide-react';
 import type { InsightsResponse, InsightSentiment } from '@/lib/api';
 
 interface AiInsightsPanelProps {
@@ -9,6 +10,12 @@ interface AiInsightsPanelProps {
   error: string | null;
   onGenerate: () => void;
   onExport: () => void;
+  /** 'summary' (default) shows only the executive summary with a link to
+   * the full report — used on the Dashboard, which otherwise duplicated
+   * the standalone Insights page. 'full' renders findings and the
+   * critical risk/opportunity too, for the Insights page itself. */
+  variant?: 'summary' | 'full';
+  projectId?: number;
 }
 
 const SENTIMENT_META: Record<InsightSentiment, { bg: string; color: string; border: string; label: string }> = {
@@ -17,10 +24,9 @@ const SENTIMENT_META: Record<InsightSentiment, { bg: string; color: string; bord
   risk: { bg: 'rgba(239, 68, 68, 0.12)', color: '#f87171', border: 'rgba(239, 68, 68, 0.3)', label: 'Risk' },
 };
 
-export default function AiInsightsPanel({ insights, isLoading, error, onGenerate, onExport }: AiInsightsPanelProps) {
+export default function AiInsightsPanel({ insights, isLoading, error, onGenerate, onExport, variant = 'summary', projectId }: AiInsightsPanelProps) {
   const critical = insights?.critical_risk_or_opportunity;
   const isRisk = critical?.type?.toLowerCase().includes('risk');
-
   return (
     <div
       style={{
@@ -102,6 +108,28 @@ export default function AiInsightsPanel({ insights, isLoading, error, onGenerate
           <p style={{ fontSize: 12.5, color: 'rgba(226, 232, 240, 0.45)' }}>
             Click &ldquo;Generate New Insights&rdquo; to get an AI-written summary of your dashboard.
           </p>
+        </div>
+      ) : variant === 'summary' ? (
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'rgba(226, 232, 240, 0.45)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Executive Summary
+          </div>
+          {insights.executive_summary.split(/\n+/).filter(Boolean).map((para, i) => (
+            <p key={i} style={{ fontSize: 13, color: 'rgba(226, 232, 240, 0.75)', lineHeight: 1.55, marginBottom: 10 }}>
+              {para}
+            </p>
+          ))}
+
+          {projectId != null && (
+            <Link
+              href={`/projects/${projectId}/insights`}
+              className="flex items-center"
+              style={{ gap: 6, marginTop: 6, fontSize: 12.5, fontWeight: 600, color: '#a78bfa', textDecoration: 'none' }}
+            >
+              View full report
+              <ArrowRight size={13} aria-hidden="true" />
+            </Link>
+          )}
         </div>
       ) : (
         <div className="flex" style={{ gap: 24, flexWrap: 'wrap' }}>

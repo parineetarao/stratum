@@ -5,7 +5,7 @@ import Link from 'next/link';
 import ReactECharts from 'echarts-for-react';
 import { Check, ExternalLink, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import type { DashboardChart } from '@/lib/api';
-import { allowedChartTypesFor, buildChartOption, CHART_TYPE_LABELS } from './chartOptions';
+import { allowedChartTypesFor, buildChartOption, CHART_TYPE_LABELS, PALETTE_PRESETS } from './chartOptions';
 
 export type ChartSize = 'small' | 'medium' | 'large';
 
@@ -25,6 +25,7 @@ interface ChartTileProps {
   onRename: (widgetKey: string, title: string) => void;
   onResize: (widgetKey: string, size: ChartSize) => void;
   onRemove: (widgetKey: string) => void;
+  onChangePalette: (widgetKey: string, colorScheme: string) => void;
 }
 
 export default function ChartTile({
@@ -35,10 +36,12 @@ export default function ChartTile({
   onRename,
   onResize,
   onRemove,
+  onChangePalette,
 }: ChartTileProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   const [resizeMenuOpen, setResizeMenuOpen] = useState(false);
+  const [paletteMenuOpen, setPaletteMenuOpen] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(chart.custom_title || chart.title);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -50,6 +53,7 @@ export default function ChartTile({
         setMenuOpen(false);
         setTypeMenuOpen(false);
         setResizeMenuOpen(false);
+        setPaletteMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -253,6 +257,54 @@ export default function ChartTile({
                       >
                         {s}
                         {s === size && <Check size={12} aria-hidden="true" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaletteMenuOpen((v) => !v);
+                    setTypeMenuOpen(false);
+                    setResizeMenuOpen(false);
+                  }}
+                  className="flex items-center justify-between"
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: 6, border: 'none', background: 'transparent', color: '#f4f4f5', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  Color Palette
+                </button>
+                {paletteMenuOpen && (
+                  <div style={{ paddingLeft: 8 }}>
+                    {Object.entries(PALETTE_PRESETS).map(([key, preset]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          onChangePalette(chart.widget_key, key);
+                          setMenuOpen(false);
+                          setPaletteMenuOpen(false);
+                        }}
+                        className="flex items-center justify-between"
+                        style={{
+                          width: '100%',
+                          padding: '6px 9px',
+                          borderRadius: 6,
+                          border: 'none',
+                          background: 'transparent',
+                          color: key === chart.color_scheme ? '#a78bfa' : 'rgba(226, 232, 240, 0.75)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          fontSize: 12,
+                        }}
+                      >
+                        <span className="flex items-center" style={{ gap: 6 }}>
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: preset.color, display: 'inline-block' }} />
+                          {preset.label}
+                        </span>
+                        {key === chart.color_scheme && <Check size={12} aria-hidden="true" />}
                       </button>
                     ))}
                   </div>

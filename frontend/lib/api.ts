@@ -926,6 +926,25 @@ export async function deleteSavedQuery(projectId: number, queryId: number): Prom
   await apiClient.delete(`/projects/${projectId}/sql/history/${queryId}`);
 }
 
+export interface QueryWidgetCreate {
+  saved_query_id: number;
+  chart_type: string;
+  x_column: string;
+  y_column: string;
+  title?: string;
+}
+
+export async function addQueryWidget(
+  projectId: number,
+  payload: QueryWidgetCreate
+): Promise<DashboardChart> {
+  const { data } = await apiClient.post<DashboardChart>(
+    `/projects/${projectId}/dashboard/widgets/query`,
+    payload
+  );
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Warehouse
 // ---------------------------------------------------------------------------
@@ -1201,6 +1220,7 @@ export interface DashboardChart {
   grid_position: number;
   grid_width: number;
   is_visible: boolean;
+  color_scheme?: string | null;
   supported_chart_types: string[];
 }
 
@@ -1323,6 +1343,11 @@ export interface InsightsResponse {
 
 export async function generateInsights(projectId: number): Promise<InsightsResponse> {
   const { data } = await apiClient.post<InsightsResponse>(`/projects/${projectId}/insights`);
+  return data;
+}
+
+export async function getLatestInsights(projectId: number): Promise<InsightsResponse> {
+  const { data } = await apiClient.get<InsightsResponse>(`/projects/${projectId}/insights/latest`);
   return data;
 }
 

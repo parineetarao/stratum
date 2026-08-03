@@ -16,9 +16,9 @@ than raw text.
 
 import json
 import logging
-from groq import Groq, APIConnectionError, APITimeoutError, AuthenticationError, APIStatusError
+from groq import APIConnectionError, APITimeoutError, AuthenticationError, APIStatusError
 from typing import List, Dict, Any, Optional
-from app.config import settings
+from app.ai.groq_client import get_groq_client
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,8 @@ def generate_insights(
 
     Returns structured insight dict with summary, findings, and risk.
     """
-    if not settings.GROQ_API_KEY:
+    client = get_groq_client()
+    if client is None:
         return {
             "success": False,
             "error_type": "missing_key",
@@ -50,8 +51,6 @@ def generate_insights(
             "findings": [],
             "critical_risk_or_opportunity": {}
         }
-
-    client = Groq(api_key=settings.GROQ_API_KEY)
 
     kpi_summary = "\n".join([
         f"- {kpi['name']}: {kpi.get('formatted_value') or kpi.get('computed_value', 'N/A')} ({kpi.get('unit', '')})"

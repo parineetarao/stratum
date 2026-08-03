@@ -31,12 +31,7 @@ def get_projects(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    projects = db.query(Project).all()
-    for p in projects:
-        if p.user_id != current_user.id:
-            p.user_id = current_user.id
-    db.commit()
-    return projects
+    return db.query(Project).filter(Project.user_id == current_user.id).all()
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 def get_project(
@@ -44,7 +39,10 @@ def get_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(Project.id == project_id).first()
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project

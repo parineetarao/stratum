@@ -1,0 +1,148 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\parin\\analytics-platform\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [12156] using WatchFiles
+INFO:     Started server process [29672]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:62895 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62897 - "GET /projects/2/dashboard HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:54376 - "GET /projects/2/overview HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:54378 - "POST /auth/refresh HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:54381 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:54196 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:56392 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:55532 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:49366 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:52604 - "POST /auth/register HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57051 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58086 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58088 - "GET /projects/2/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54232 - "GET /projects/2/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49803 - "GET /projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55378 - "GET /projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62420 - "GET /projects/1/connection HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62421 - "GET /projects/2/connection HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65472 - "GET /projects/2/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58424 - "GET /projects/2/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49771 - "GET /projects/2/kpis HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54112 - "GET /projects/2/kpis HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49772 - "GET /projects/2/dashboard HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:52100 - "GET /projects/2/dashboard HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:62232 - "GET /projects/2/warehouse-design HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62234 - "GET /projects/2/warehouse-design HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58185 - "GET /projects/2/kpis?mode=source HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53286 - "GET /projects/2/kpis?mode=source HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58184 - "GET /projects/2/sandbox/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49391 - "GET /projects/2/sandbox/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49675 - "GET /projects/2/connection HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62352 - "GET /projects/2/connection HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49676 - "GET /projects/2/sandbox/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58957 - "GET /projects/2/sandbox/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49674 - "GET /projects/2/catalog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64849 - "GET /projects/2/catalog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56937 - "GET /projects/2/insights/latest HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56939 - "GET /projects/2/insights/latest HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60106 - "POST /projects/2/insights HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'app\api\projects.py'. Reloading...
+INFO:     127.0.0.1:64849 - "GET /projects/2/kpis HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58402 - "GET /projects/2/kpis HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+INFO:     127.0.0.1:64850 - "GET /projects/2/dashboard HTTP/1.1" 502 Bad Gateway
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [29672]
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\multiprocessing\process.py", line 314, in _bootstrap
+    self.run()
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\multiprocessing\process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\parin\analytics-platform\backend\venv\Lib\site-packages\uvicorn\_subprocess.py", line 78, in subprocess_started
+    target(sockets=sockets)
+  File "C:\Users\parin\analytics-platform\backend\venv\Lib\site-packages\uvicorn\server.py", line 65, in run
+    return asyncio.run(self.serve(sockets=sockets))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+WARNING:  WatchFiles detected changes in 'app\api\projects.py'. Reloading...
+INFO:     Started server process [32948]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    Traceback (most recent call last):
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\parin\analytics-platform\backend\venv\Lib\site-packages\starlette\routing.py", line 741, in lifespan
+    await receive()
+  File "C:\Users\parin\analytics-platform\backend\venv\Lib\site-packages\uvicorn\lifespan\on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+Process SpawnProcess-2:
+Traceback (most recent call last):
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\multiprocessing\process.py", line 314, in _bootstrap
+    self.run()
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\multiprocessing\process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\parin\analytics-platform\backend\venv\Lib\site-packages\uvicorn\_subprocess.py", line 78, in subprocess_started
+    target(sockets=sockets)
+  File "C:\Users\parin\analytics-platform\backend\venv\Lib\site-packages\uvicorn\server.py", line 65, in run
+    return asyncio.run(self.serve(sockets=sockets))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\parin\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+INFO:     Started server process [30016]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

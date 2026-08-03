@@ -44,6 +44,7 @@ export default function DashboardExplorer() {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [selectedKpiId, setSelectedKpiId] = useState<number | null>(null);
   const [highlightedWidgetKey, setHighlightedWidgetKey] = useState<string | null>(null);
   const [isAddWidgetOpen, setIsAddWidgetOpen] = useState(false);
@@ -130,8 +131,10 @@ export default function DashboardExplorer() {
           })
         )
       );
+      setLastSavedAt(new Date().toISOString());
     } catch (err) {
-      setErrorMessage(extractErrorMessage(err, 'Failed to save dashboard configuration.'));
+      setLastSavedAt(null);
+      setErrorMessage(extractErrorMessage(err, 'Failed to save dashboard configuration. Some chart changes may not have been saved.'));
     } finally {
       setIsSaving(false);
     }
@@ -178,10 +181,25 @@ export default function DashboardExplorer() {
     });
   }
 
+  function handleChangePalette(widgetKey: string, colorScheme: string) {
+    updateChart(widgetKey, { color_scheme: colorScheme });
+    saveChartConfig(projectId, widgetKey, { color_scheme: colorScheme }).catch(() => {
+      setErrorMessage('Failed to save chart color palette.');
+    });
+  }
+
   function handleAddWidget(widgetKey: string) {
     updateChart(widgetKey, { is_visible: true });
     saveChartConfig(projectId, widgetKey, { is_visible: true }).catch(() => {
       setErrorMessage('Failed to add widget.');
+    });
+    setIsAddWidgetOpen(false);
+  }
+
+  function handleAddQueryWidget(chart: DashboardChart) {
+    setCharts((prev) => {
+      const withoutExisting = prev.filter((c) => c.widget_key !== chart.widget_key);
+      return [...withoutExisting, chart];
     });
     setIsAddWidgetOpen(false);
   }
@@ -191,7 +209,11 @@ export default function DashboardExplorer() {
     setInsightsError(null);
     try {
       const res = await generateInsights(projectId);
-      setInsights(res);
+      if (res.success) {
+        setInsights(res);
+      } else {
+        setInsightsError(res.executive_summary || 'Failed to generate AI insights.');
+      }
     } catch (err) {
       setInsightsError(extractErrorMessage(err, 'Failed to generate AI insights.'));
     } finally {
@@ -288,6 +310,7 @@ export default function DashboardExplorer() {
         lastRefreshed={lastRefreshed}
         isRefreshing={isRefreshing}
         isSaving={isSaving}
+        lastSavedAt={lastSavedAt}
         onRefresh={handleRefresh}
         onSave={handleSaveDashboard}
       />
@@ -324,6 +347,7 @@ export default function DashboardExplorer() {
         onRename={handleRename}
         onResize={handleResize}
         onRemove={handleRemoveFromGrid}
+        onChangePalette={handleChangePalette}
         onAddWidget={() => setIsAddWidgetOpen(true)}
       />
 
@@ -331,6 +355,7 @@ export default function DashboardExplorer() {
         insights={insights}
         isLoading={insightsLoading}
         error={insightsError}
+        projectId={projectId}
         onGenerate={handleGenerateInsights}
         onExport={handleExportInsights}
       />
@@ -351,6 +376,7 @@ export default function DashboardExplorer() {
           projectId={projectId}
           hiddenCharts={hiddenCharts}
           onAdd={handleAddWidget}
+          onAddQueryWidget={handleAddQueryWidget}
           onClose={() => setIsAddWidgetOpen(false)}
         />
       )}

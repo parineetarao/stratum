@@ -22,8 +22,39 @@ from app.engine.dashboard_chart_planner import (
     generate_candidates, classify_result, curate, FinalizedChart
 )
 from app.models.dashboard_config import DashboardConfig
+from app.models.saved_query import SavedQuery
+from app.engine.sandbox_engine import sandbox_exists
+from pydantic import BaseModel
+from typing import Optional
 
 router = APIRouter(prefix="/projects", tags=["Dashboard"])
+
+
+class QueryWidgetCreate(BaseModel):
+    saved_query_id: int
+    chart_type: str = "bar"
+    x_column: str
+    y_column: str
+    title: Optional[str] = None
+
+
+def _check_connector_reachable(connector) -> None:
+    """
+    Fails fast with a clean error if the underlying data source can't be
+    reached, instead of letting every downstream KPI/chart query retry
+    and fail against a dead connection one at a time — which previously
+    compounded into a multi-minute hang that looked like an infinite
+    loading spinner on the dashboard.
+    """
+    if not hasattr(connector, 'test_connection'):
+        return
+    try:
+        connector.test_connection()
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not connect to the data source: {e}"
+        )
 
 
 def get_connector(connection: Connection):
@@ -159,6 +190,79 @@ def build_analytical_charts(
     return charts
 
 
+def build_query_widget_charts(
+    db: Session,
+    project_id: int,
+    connector
+) -> List[DashboardChart]:
+    """
+    Rebuilds each persisted saved-query widget (a DashboardConfig row
+    whose chart_options carries a saved_query_id) by re-executing the
+    saved query's SQL, so query-based widgets reflect current data on
+    every dashboard load just like KPI-derived charts.
+    """
+    configs = db.query(DashboardConfig).filter(
+        DashboardConfig.project_id == project_id,
+        DashboardConfig.widget_key.like("query%")
+    ).all()
+
+    charts: List[DashboardChart] = []
+    for config in configs:
+        opts = config.chart_options or {}
+        saved_query_id = opts.get("saved_query_id")
+        x_column = opts.get("x_column")
+        y_column = opts.get("y_column")
+        if not saved_query_id or not x_column or not y_column:
+            continue
+
+        saved_query = db.query(SavedQuery).filter(
+            SavedQuery.id == saved_query_id,
+            SavedQuery.project_id == project_id
+        ).first()
+        if not saved_query:
+            continue
+
+        try:
+            df = run_sql(saved_query.sql, saved_query.environment, project_id, connector)
+        except Exception:
+            df = None
+
+        chart_data = []
+        if df is not None and x_column in df.columns and y_column in df.columns:
+            for _, row in df.iterrows():
+                try:
+                    value = float(row[y_column]) if row[y_column] is not None else None
+                except (TypeError, ValueError):
+                    value = None
+                chart_data.append({
+                    "period": None,
+                    "label": str(row[x_column]) if row[x_column] is not None else None,
+                    "value": value,
+                })
+
+        charts.append(DashboardChart(
+            widget_key=config.widget_key,
+            title=config.custom_title or saved_query.name,
+            custom_title=config.custom_title,
+            chart_type=config.chart_type or "bar",
+            chart_form="categorical",
+            value_label=x_column,
+            sql=saved_query.sql,
+            mode=saved_query.environment,
+            unit="",
+            category=None,
+            source_kpi_id=None,
+            chart_data=chart_data,
+            grid_position=config.grid_position if config.grid_position is not None else 999,
+            grid_width=config.grid_width if config.grid_width is not None else 6,
+            is_visible=config.is_visible if config.is_visible is not None else True,
+            color_scheme=config.color_scheme,
+            supported_chart_types=["bar", "horizontal_bar", "line", "area", "donut", "pie", "table"],
+        ))
+
+    return charts
+
+
 @router.get("/{project_id}/dashboard", response_model=DashboardResponse)
 def get_dashboard(
     project_id: int,
@@ -198,9 +302,11 @@ def get_dashboard(
         raise HTTPException(status_code=404, detail="No connection found")
 
     connector = get_connector(connection)
+    _check_connector_reachable(connector)
     try:
         kpi_dicts = build_kpi_dicts(approved_kpis)
         charts = build_analytical_charts(db, project_id, kpi_dicts, connector)
+        charts += build_query_widget_charts(db, project_id, connector)
     finally:
         if hasattr(connector, 'dispose'):
             connector.dispose()
@@ -259,6 +365,7 @@ def refresh_dashboard(
         raise HTTPException(status_code=404, detail="No connection found")
 
     connector = get_connector(connection)
+    _check_connector_reachable(connector)
     try:
         for kpi in approved_kpis:
             kpi.computed_value = execute_kpi_sql(kpi.sql, mode_str, project_id, connector)
@@ -268,6 +375,7 @@ def refresh_dashboard(
 
         kpi_dicts = build_kpi_dicts(approved_kpis)
         charts = build_analytical_charts(db, project_id, kpi_dicts, connector)
+        charts += build_query_widget_charts(db, project_id, connector)
     finally:
         if hasattr(connector, 'dispose'):
             connector.dispose()
@@ -326,6 +434,136 @@ def save_chart_config(
         db.commit()
         db.refresh(new_config)
         return new_config
+
+
+@router.post("/{project_id}/dashboard/widgets/query", response_model=DashboardChart)
+def add_query_widget(
+    project_id: int,
+    payload: QueryWidgetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Turns a saved SQL Workspace query into a real dashboard widget: the
+    query is executed, the chosen columns are validated against the
+    result, and a DashboardConfig row is persisted (widget_key
+    'query{id}', chart_options carrying the saved_query_id + chosen
+    columns so it can be re-executed on every future dashboard load).
+    """
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    saved_query = db.query(SavedQuery).filter(
+        SavedQuery.id == payload.saved_query_id,
+        SavedQuery.project_id == project_id
+    ).first()
+    if not saved_query:
+        raise HTTPException(status_code=404, detail="Saved query not found")
+
+    if payload.chart_type not in ("bar", "horizontal_bar", "line", "area", "donut", "pie", "table"):
+        raise HTTPException(status_code=400, detail="Unsupported chart type")
+
+    if saved_query.environment == "warehouse" and not sandbox_exists(project_id):
+        raise HTTPException(status_code=400, detail="Sandbox not initialized for this query's environment")
+
+    connection = db.query(Connection).filter(
+        Connection.project_id == project_id
+    ).first()
+    if not connection:
+        raise HTTPException(status_code=404, detail="No connection found")
+
+    connector = get_connector(connection)
+    try:
+        try:
+            df = run_sql(saved_query.sql, saved_query.environment, project_id, connector)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to execute saved query: {e}")
+    finally:
+        if hasattr(connector, 'dispose'):
+            connector.dispose()
+
+    if df is None or len(df) == 0:
+        raise HTTPException(status_code=400, detail="Saved query returned no rows to chart")
+
+    if payload.x_column not in df.columns or payload.y_column not in df.columns:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Columns not found in query result. Available: {list(df.columns)}"
+        )
+
+    widget_key = f"query{saved_query.id}"
+    max_position = db.query(DashboardConfig).filter(
+        DashboardConfig.project_id == project_id
+    ).count()
+
+    chart_options = {
+        "saved_query_id": saved_query.id,
+        "x_column": payload.x_column,
+        "y_column": payload.y_column,
+    }
+
+    existing = db.query(DashboardConfig).filter(
+        DashboardConfig.project_id == project_id,
+        DashboardConfig.widget_key == widget_key
+    ).first()
+    if existing:
+        existing.chart_type = payload.chart_type
+        existing.custom_title = payload.title or existing.custom_title
+        existing.chart_options = chart_options
+        existing.is_visible = True
+        db.commit()
+        db.refresh(existing)
+        config = existing
+    else:
+        config = DashboardConfig(
+            project_id=project_id,
+            widget_key=widget_key,
+            chart_type=payload.chart_type,
+            custom_title=payload.title,
+            chart_options=chart_options,
+            grid_position=max_position,
+            grid_width=6,
+            is_visible=True,
+        )
+        db.add(config)
+        db.commit()
+        db.refresh(config)
+
+    chart_data = []
+    for _, row in df.iterrows():
+        try:
+            value = float(row[payload.y_column]) if row[payload.y_column] is not None else None
+        except (TypeError, ValueError):
+            value = None
+        chart_data.append({
+            "period": None,
+            "label": str(row[payload.x_column]) if row[payload.x_column] is not None else None,
+            "value": value,
+        })
+
+    return DashboardChart(
+        widget_key=widget_key,
+        title=config.custom_title or saved_query.name,
+        custom_title=config.custom_title,
+        chart_type=config.chart_type or payload.chart_type,
+        chart_form="categorical",
+        value_label=payload.x_column,
+        sql=saved_query.sql,
+        mode=saved_query.environment,
+        unit="",
+        category=None,
+        source_kpi_id=None,
+        chart_data=chart_data,
+        grid_position=config.grid_position or 0,
+        grid_width=config.grid_width or 6,
+        is_visible=True,
+        color_scheme=config.color_scheme,
+        supported_chart_types=["bar", "horizontal_bar", "line", "area", "donut", "pie", "table"],
+    )
 
 
 @router.get("/{project_id}/dashboard/report",

@@ -12,6 +12,7 @@ interface ChartGridProps {
   onRename: (widgetKey: string, title: string) => void;
   onResize: (widgetKey: string, size: ChartSize) => void;
   onRemove: (widgetKey: string) => void;
+  onChangePalette: (widgetKey: string, colorScheme: string) => void;
   onAddWidget: () => void;
 }
 
@@ -23,6 +24,7 @@ export default function ChartGrid({
   onRename,
   onResize,
   onRemove,
+  onChangePalette,
   onAddWidget,
 }: ChartGridProps) {
   return (
@@ -44,6 +46,7 @@ export default function ChartGrid({
           onRename={onRename}
           onResize={onResize}
           onRemove={onRemove}
+          onChangePalette={onChangePalette}
         />
       ))}
 
