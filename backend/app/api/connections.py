@@ -25,13 +25,13 @@ from app.api.deps import get_current_user
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector, detect_csv_dialect
 from app.core.connection_string import parse_postgres_connection_string
+from app.config import settings
+from pathlib import Path
 import shutil
-import os
 
 router = APIRouter(prefix="/projects", tags=["Connections"])
 
-UPLOAD_DIR = "/app/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+UPLOAD_DIR = Path(settings.UPLOAD_DIR)
 
 def get_project_or_404(project_id: int, user_id: int, db: Session) -> Project:
     project = db.query(Project).filter(
@@ -74,7 +74,7 @@ def check_connection_health(connection: Connection) -> ConnectionHealth:
                 checked_at=now,
             )
         else:
-            if not connection.file_path or not os.path.exists(connection.file_path):
+            if not connection.file_path or not Path(connection.file_path).exists():
                 return ConnectionHealth(
                     status="unhealthy",
                     message="The uploaded file could not be found on disk.",
@@ -184,9 +184,9 @@ async def connect_file(
     if not filename.endswith((".csv", ".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Only CSV and Excel files are supported")
 
-    project_upload_dir = os.path.join(UPLOAD_DIR, str(project_id))
-    os.makedirs(project_upload_dir, exist_ok=True)
-    file_path = os.path.join(project_upload_dir, filename)
+    project_upload_dir = UPLOAD_DIR / str(project_id)
+    project_upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = project_upload_dir / filename
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -203,7 +203,7 @@ async def connect_file(
     connection = Connection(
         project_id=project_id,
         connection_type=conn_type,
-        file_path=file_path,
+        file_path=str(file_path),
         original_filename=filename
     )
     db.add(connection)
@@ -290,8 +290,8 @@ def get_data_source_detail(
             "encoding": None, "delimiter": None
         }
         file_size = None
-        if connection.file_path and os.path.exists(connection.file_path):
-            file_size = os.path.getsize(connection.file_path)
+        if connection.file_path and Path(connection.file_path).exists():
+            file_size = Path(connection.file_path).stat().st_size
         extension = (
             connection.original_filename.split(".")[-1].lower()
             if connection.original_filename and "." in connection.original_filename

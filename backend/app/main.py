@@ -19,8 +19,7 @@ from app.models import warehouse as warehouse_model
 from app.models import kpi as kpi_model
 from app.models import saved_query as saved_query_model
 from app.core.scheduler import scheduler
-
-Base.metadata.create_all(bind=engine)
+from app.config import settings
 
 def ensure_kpi_table_columns():
     from sqlalchemy import inspect, text
@@ -42,7 +41,15 @@ def ensure_kpi_table_columns():
                         pass
             conn.commit()
 
-ensure_kpi_table_columns()
+def init_db():
+    """Optional dev-only schema bootstrap. Production/CI schema changes are
+    expected to go through Alembic migrations; set AUTO_CREATE_TABLES=true
+    to fall back to create_all() for quick local setup."""
+    if settings.AUTO_CREATE_TABLES:
+        Base.metadata.create_all(bind=engine)
+        ensure_kpi_table_columns()
+
+init_db()
 
 
 app = FastAPI(
