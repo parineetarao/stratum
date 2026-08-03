@@ -22,7 +22,6 @@ from app.engine.dashboard_chart_planner import (
     generate_candidates, classify_result, curate, FinalizedChart
 )
 from app.models.dashboard_config import DashboardConfig
-from app.ai.insight_generator import generate_insights
 
 router = APIRouter(prefix="/projects", tags=["Dashboard"])
 
@@ -95,10 +94,15 @@ def build_analytical_charts(
     connector
 ) -> List[DashboardChart]:
     """
-    Generates the curated set of analytical breakdown charts: every
-    candidate is executed, validated (rejecting anything that resolves
-    to fewer than 2 rows — indistinguishable from a scalar value), then
-    narrowed to a diverse final set and overlaid with any saved config.
+    Generates every chart-worthy analytical breakdown: each candidate is
+    executed and validated (rejecting anything that resolves to fewer
+    than 2 rows — indistinguishable from a scalar value). A diverse
+    ~5-6 chart subset is curated as the default visible grid, but every
+    other chart-worthy breakdown is still returned (is_visible=False)
+    so the Add Widget drawer can offer them, rather than discarding
+    candidates the curation step didn't pick for the default layout.
+    A saved config always wins over both the curated default and the
+    freshly computed value for whichever fields it actually touched.
     """
     candidates = generate_candidates(db, project_id, kpi_dicts)
 
@@ -113,7 +117,7 @@ def build_analytical_charts(
         if result:
             finalized.append(result)
 
-    curated = curate(finalized)
+    curated_keys = {c.widget_key for c in curate(finalized)}
 
     configs = db.query(DashboardConfig).filter(
         DashboardConfig.project_id == project_id
@@ -121,9 +125,10 @@ def build_analytical_charts(
     configs_by_key = {c.widget_key: c for c in configs}
 
     charts = []
-    for i, chart in enumerate(curated):
+    for i, chart in enumerate(finalized):
         config = configs_by_key.get(chart.widget_key)
         custom_title = config.custom_title if config else None
+        default_visible = chart.widget_key in curated_keys
         charts.append(DashboardChart(
             widget_key=chart.widget_key,
             title=custom_title or chart.title,
@@ -145,7 +150,8 @@ def build_analytical_charts(
             ],
             grid_position=config.grid_position if config and config.grid_position is not None else i,
             grid_width=config.grid_width if config and config.grid_width is not None else 6,
-            is_visible=config.is_visible if config and config.is_visible is not None else True,
+            is_visible=config.is_visible if config and config.is_visible is not None else default_visible,
+            color_scheme=config.color_scheme if config else None,
             supported_chart_types=get_supported_chart_types(chart.unit),
         ))
 
@@ -374,13 +380,17 @@ def generate_dashboard_report(
         for k in approved_kpis
     ]
 
+    from app.models.insight_report import InsightReport
+    latest_report = db.query(InsightReport).filter(
+        InsightReport.project_id == project_id
+    ).order_by(InsightReport.created_at.desc()).first()
     insights_result = None
-    if approved_kpis:
-        insights_result = generate_insights(
-            domain=domain_str,
-            kpis=kpi_summary,
-            quality_score=quality_score
-        )
+    if latest_report:
+        insights_result = {
+            "success": latest_report.success,
+            "executive_summary": latest_report.executive_summary,
+            "findings": latest_report.findings or [],
+        }
 
     sections = [
         ReportSection(

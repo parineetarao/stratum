@@ -1,15 +1,21 @@
 from app.engine.warehouse_designer import WAREHOUSE_SCHEMA
+from app.config import settings
 import duckdb
 import os
+from pathlib import Path
 from typing import List, Dict, Any
 from app.connectors.base import BaseConnector
 
-SANDBOX_DIR = "/app/sandboxes"
-os.makedirs(SANDBOX_DIR, exist_ok=True)
+SANDBOX_DIR = Path(settings.SANDBOX_DIR)
+
+
+def ensure_sandbox_dir() -> Path:
+    SANDBOX_DIR.mkdir(parents=True, exist_ok=True)
+    return SANDBOX_DIR
 
 
 def get_sandbox_path(project_id: int) -> str:
-    return os.path.join(SANDBOX_DIR, f"project_{project_id}.duckdb")
+    return str(SANDBOX_DIR / f"project_{project_id}.duckdb")
 
 
 def initialize_sandbox(
@@ -22,6 +28,7 @@ def initialize_sandbox(
     Copies all source tables from the connected database into DuckDB.
     Returns the sandbox path.
     """
+    ensure_sandbox_dir()
     path = get_sandbox_path(project_id)
     conn = duckdb.connect(database=path)
 

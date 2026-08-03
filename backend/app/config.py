@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     GROQ_API_KEY: str = ""
     UPLOAD_DIR: str = str(BACKEND_DIR / "uploads")
+    SANDBOX_DIR: str = str(BACKEND_DIR / "sandboxes")
     AUTO_CREATE_TABLES: bool = False
 
     class Config:

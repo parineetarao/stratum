@@ -15,9 +15,14 @@ than raw text.
 """
 
 import json
-from groq import Groq
+import logging
+from groq import Groq, APIConnectionError, APITimeoutError, AuthenticationError, APIStatusError
 from typing import List, Dict, Any, Optional
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+MODEL = "llama-3.1-8b-instant"
 
 
 def generate_insights(
@@ -37,6 +42,15 @@ def generate_insights(
 
     Returns structured insight dict with summary, findings, and risk.
     """
+    if not settings.GROQ_API_KEY:
+        return {
+            "success": False,
+            "error_type": "missing_key",
+            "executive_summary": "Groq API key is not configured.",
+            "findings": [],
+            "critical_risk_or_opportunity": {}
+        }
+
     client = Groq(api_key=settings.GROQ_API_KEY)
 
     kpi_summary = "\n".join([
@@ -82,13 +96,14 @@ Generate executive insights based on these metrics."""
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model=MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
             max_tokens=1000,
-            temperature=0.3
+            temperature=0.3,
+            timeout=20
         )
 
         content = response.choices[0].message.content.strip()
@@ -104,17 +119,57 @@ Generate executive insights based on these metrics."""
                 )
             }
         except json.JSONDecodeError:
+            logger.error("Groq returned non-JSON insight content: %s", content[:500])
             return {
                 "success": False,
-                "executive_summary": content,
+                "error_type": "invalid_response",
+                "executive_summary": "Groq returned an unexpected response. Please try again.",
                 "findings": [],
                 "critical_risk_or_opportunity": {}
             }
 
-    except Exception as e:
+    except AuthenticationError:
+        logger.exception("Groq authentication failed")
         return {
             "success": False,
-            "executive_summary": f"Could not generate insights: {str(e)}",
+            "error_type": "auth",
+            "executive_summary": "Groq API key is invalid. Check GROQ_API_KEY and try again.",
+            "findings": [],
+            "critical_risk_or_opportunity": {}
+        }
+    except APITimeoutError:
+        logger.exception("Groq request timed out")
+        return {
+            "success": False,
+            "error_type": "timeout",
+            "executive_summary": "Groq took too long to respond. Please try again.",
+            "findings": [],
+            "critical_risk_or_opportunity": {}
+        }
+    except APIConnectionError:
+        logger.exception("Could not reach Groq API")
+        return {
+            "success": False,
+            "error_type": "connection",
+            "executive_summary": "Could not reach the Groq API. Check backend network access and try again.",
+            "findings": [],
+            "critical_risk_or_opportunity": {}
+        }
+    except APIStatusError as e:
+        logger.exception("Groq API returned an error status")
+        return {
+            "success": False,
+            "error_type": "api_error",
+            "executive_summary": f"Groq API error ({e.status_code}). Please try again.",
+            "findings": [],
+            "critical_risk_or_opportunity": {}
+        }
+    except Exception:
+        logger.exception("Unexpected error generating insights")
+        return {
+            "success": False,
+            "error_type": "unknown",
+            "executive_summary": "Could not generate insights due to an unexpected error.",
             "findings": [],
             "critical_risk_or_opportunity": {}
         }

@@ -71,6 +71,7 @@ class DashboardChart(BaseModel):
     grid_position: int = 0
     grid_width: int = 6
     is_visible: bool = True
+    color_scheme: Optional[str] = None
     supported_chart_types: List[str] = []
 
 

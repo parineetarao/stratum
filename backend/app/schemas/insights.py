@@ -24,3 +24,4 @@ class InsightsResponse(BaseModel):
     findings: List[InsightFinding]
     critical_risk_or_opportunity: Optional[Dict[str, Any]] = None
     kpis_analyzed: int
+    generated_at: Optional[str] = None

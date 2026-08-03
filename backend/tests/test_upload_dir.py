@@ -19,19 +19,16 @@ def test_upload_dir_respects_env_override(monkeypatch):
     assert settings.UPLOAD_DIR == "/app/uploads"
 
 
-def test_importing_connections_does_not_create_upload_dir():
+def test_importing_connections_does_not_create_upload_dir(tmp_path, monkeypatch):
     """Regression test: importing connections.py must not create the upload
     directory as a side effect (it used to unconditionally os.makedirs('/app/uploads'),
-    which raises PermissionError on CI runners where '/' is not writable)."""
-    from app.api import connections
-    import shutil
+    which raises PermissionError on CI runners where '/' is not writable).
 
-    target = connections.UPLOAD_DIR
-    was_present = target.exists()
-    if not was_present:
-        assert not target.exists()
-    else:
-        shutil.rmtree(target)
-        import importlib
-        importlib.reload(connections)
-        assert not connections.UPLOAD_DIR.exists()
+    Uses a throwaway tmp_path target so it never touches the real configured
+    UPLOAD_DIR (which may hold real uploaded project data)."""
+    from app.api import connections
+
+    redirected = tmp_path / "uploads"
+    monkeypatch.setattr(connections, "UPLOAD_DIR", redirected)
+
+    assert not redirected.exists()
