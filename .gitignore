@@ -12,3 +12,5 @@ build/
 .DS_Store
 stratum.db
 frontend/tsconfig.tsbuildinfofrontend/tsconfig.tsbuildinfo
+backend/backend_dev.log
+frontend/frontend_dev.log
