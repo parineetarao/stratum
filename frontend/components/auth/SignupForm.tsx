@@ -8,7 +8,6 @@ import { login, registerUser, fetchCurrentUser, extractErrorMessage } from '@/li
 import { useAuthStore } from '@/lib/auth';
 import { crossAuthLink } from '@/hooks/useAuthRedirect';
 import FormField from './FormField';
-import OAuthButton from './OAuthButton';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -196,14 +195,6 @@ export default function SignupForm({ redirectTo }: SignupFormProps) {
           )}
         </button>
       </form>
-
-      <div className="flex items-center" style={{ gap: 18, margin: '30px 0' }}>
-        <span style={{ height: 1, flex: 1, background: 'rgba(148, 163, 184, 0.2)' }} />
-        <span style={{ fontSize: 14, color: 'rgba(226, 232, 240, 0.65)' }}>OR</span>
-        <span style={{ height: 1, flex: 1, background: 'rgba(148, 163, 184, 0.2)' }} />
-      </div>
-
-      <OAuthButton />
 
       <p style={{ textAlign: 'center', fontSize: 15, color: 'rgba(226, 232, 240, 0.68)', marginTop: 46 }}>
         Already have an account?{' '}

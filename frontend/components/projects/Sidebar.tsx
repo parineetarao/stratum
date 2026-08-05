@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Bell, Database, FolderKanban, Link2, LogOut, Settings, Users, X } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import { Database, FolderKanban, LogOut, Settings, X } from 'lucide-react';
 import Logo from '@/components/landing/Logo';
 import { useAuthStore } from '@/lib/auth';
 import { logoutUser } from '@/lib/api';
@@ -11,16 +11,12 @@ interface NavItem {
   label: string;
   icon: typeof FolderKanban;
   href: string;
-  active?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Projects', icon: FolderKanban, href: '/projects', active: true },
-  { label: 'Data Sources', icon: Database, href: '#' },
-  { label: 'Integrations', icon: Link2, href: '#' },
-  { label: 'Team', icon: Users, href: '#' },
-  { label: 'Notifications', icon: Bell, href: '#' },
-  { label: 'Settings', icon: Settings, href: '#' },
+  { label: 'Projects', icon: FolderKanban, href: '/projects' },
+  { label: 'Data Sources', icon: Database, href: '/data-sources' },
+  { label: 'Settings', icon: Settings, href: '/settings' },
 ];
 
 interface SidebarProps {
@@ -32,6 +28,7 @@ interface SidebarProps {
 
 export default function Sidebar({ email, isOverlay, isOpen, onClose }: SidebarProps) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const handleLogout = async () => {
     try {
@@ -86,36 +83,29 @@ export default function Sidebar({ email, isOverlay, isOpen, onClose }: SidebarPr
       <nav style={{ padding: '8px 10px', flex: 1 }}>
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const inner = (
-            <span
-              className="flex items-center"
-              style={{
-                gap: 11,
-                padding: '9px 12px',
-                borderRadius: 7,
-                fontSize: 13.5,
-                fontWeight: 500,
-                color: item.active ? '#f5f5f7' : 'rgba(226, 232, 240, 0.62)',
-                background: item.active
-                  ? 'linear-gradient(90deg, rgba(111, 53, 244, 0.16), rgba(46, 167, 255, 0.06))'
-                  : 'transparent',
-                borderLeft: item.active ? '2px solid #8b5cf6' : '2px solid transparent',
-                cursor: item.active ? 'pointer' : 'default',
-              }}
-            >
-              <Icon size={16} strokeWidth={1.6} aria-hidden="true" />
-              {item.label}
-            </span>
-          );
+          const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
 
-          return item.active ? (
-            <Link key={item.label} href={item.href} style={{ display: 'block', marginBottom: 2 }}>
-              {inner}
+          return (
+            <Link key={item.label} href={item.href} onClick={onClose} style={{ display: 'block', marginBottom: 2 }}>
+              <span
+                className="flex items-center"
+                style={{
+                  gap: 11,
+                  padding: '9px 12px',
+                  borderRadius: 7,
+                  fontSize: 13.5,
+                  fontWeight: 500,
+                  color: active ? '#f5f5f7' : 'rgba(226, 232, 240, 0.62)',
+                  background: active
+                    ? 'linear-gradient(90deg, rgba(111, 53, 244, 0.16), rgba(46, 167, 255, 0.06))'
+                    : 'transparent',
+                  borderLeft: active ? '2px solid #8b5cf6' : '2px solid transparent',
+                }}
+              >
+                <Icon size={16} strokeWidth={1.6} aria-hidden="true" />
+                {item.label}
+              </span>
             </Link>
-          ) : (
-            <div key={item.label} style={{ display: 'block', marginBottom: 2 }}>
-              {inner}
-            </div>
           );
         })}
       </nav>
