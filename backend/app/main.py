@@ -84,9 +84,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000",
-        "https://stratum-frontend.onrender.com",
-        "https://*.onrender.com",
-        "https://*.vercel.app",],
+        "https://stratum-frontend.onrender.com"],
+    allow_origin_regex=r"https://.*\.(vercel\.app|onrender\.com)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

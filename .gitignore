@@ -19,3 +19,5 @@ backend/backend_dev_run.log
 backend/backend_run.log
 frontend/frontend_run.log
 frontend/tsconfig.tsbuildinfo
+frontend/.env.local
+.env.local

@@ -1,9 +1,14 @@
+import os
 import psycopg2
 import re
 import io
 
 def load_pagila():
-    conn = psycopg2.connect('postgresql://stratum_user:stratum_password@localhost:5432/stratum_db')
+    database_url = os.environ.get(
+        "PAGILA_DATABASE_URL",
+        "postgresql://stratum_user:stratum_password@localhost:5432/stratum_db",
+    )
+    conn = psycopg2.connect(database_url)
     conn.autocommit = True
     cur = conn.cursor()
 
