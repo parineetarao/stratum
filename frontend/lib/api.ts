@@ -429,30 +429,6 @@ export async function getProjectOverview(projectId: number): Promise<ProjectOver
   return data;
 }
 
-// ---------------------------------------------------------------------------
-// Public demo (no auth required)
-// ---------------------------------------------------------------------------
-
-export interface DemoProjectResponse {
-  project_id: number;
-}
-
-export async function getDemoProject(): Promise<DemoProjectResponse> {
-  const { data } = await apiClient.get<DemoProjectResponse>('/demo/project');
-  return data;
-}
-
-export interface DemoQuery {
-  id: string;
-  title: string;
-  sql: string;
-}
-
-export async function getDemoQueries(): Promise<DemoQuery[]> {
-  const { data } = await apiClient.get<DemoQuery[]>('/demo/queries');
-  return data;
-}
-
 export type HealthStatus = 'healthy' | 'unhealthy' | 'unknown';
 
 export interface ConnectionHealth {
@@ -856,20 +832,6 @@ export async function executeSql(
   const { data } = await apiClient.post<SQLExecuteResponse>(
     `/projects/${projectId}/sql/execute`,
     { sql, environment, query_id: queryId ?? null },
-    { signal }
-  );
-  return data;
-}
-
-export async function executeCuratedDemoQuery(
-  projectId: number,
-  queryId: string,
-  environment: SqlEnvironment = 'source',
-  signal?: AbortSignal
-): Promise<SQLExecuteResponse> {
-  const { data } = await apiClient.post<SQLExecuteResponse>(
-    `/projects/${projectId}/sql/execute`,
-    { environment, query_id: queryId },
     { signal }
   );
   return data;

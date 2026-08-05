@@ -9,7 +9,6 @@ import { useViewportWidth } from '@/hooks/useViewportWidth';
 import { useAuthStore, useAuthHydrated } from '@/lib/auth';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader';
-import DemoBanner from '@/components/workspace/DemoBanner';
 import { WorkspaceProvider } from '@/components/workspace/WorkspaceContext';
 
 type LoadState = 'loading' | 'not_found' | 'failed' | 'ready';
@@ -26,11 +25,9 @@ function CenteredScreen({ children }: { children: React.ReactNode }) {
 }
 
 export default function ProjectWorkspaceLayout({ children }: { children: React.ReactNode }) {
-  // Deliberately does NOT gate on auth up front: the public demo project
-  // must be reachable with zero login state. We always attempt the
-  // overview fetch (anonymous requests just omit the Authorization
-  // header) and only redirect to /login if it turns out we needed auth
-  // and didn't have it.
+  // Does not gate on auth up front: we always attempt the overview fetch
+  // and only redirect to /login if it turns out we needed auth and didn't
+  // have it.
   const authHydrated = useAuthHydrated();
   const router = useRouter();
   const params = useParams<{ projectId: string }>();
@@ -172,28 +169,23 @@ export default function ProjectWorkspaceLayout({ children }: { children: React.R
     );
   }
 
-  const isDemo = Boolean(overview.is_demo);
-  const bannerHeight = isDemo ? 44 : 0;
-
   return (
     <WorkspaceProvider overview={overview} refetch={() => setRetryCount((c) => c + 1)}>
       <div style={{ minHeight: '100vh', background: '#020305', color: '#f4f4f5' }}>
-        {isDemo && <DemoBanner />}
-
         <WorkspaceSidebar
           projectId={projectId}
           overview={overview}
           isOverlay={isCompact}
           isOpen={isCompact ? isMobileSidebarOpen : true}
           onClose={() => setIsMobileSidebarOpen(false)}
-          topOffset={bannerHeight}
+          topOffset={0}
         />
 
         <div
           style={
             isSqlWorkspace
-              ? { marginLeft: isCompact ? 0 : 232, marginTop: bannerHeight, height: `calc(100vh - ${bannerHeight}px)`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }
-              : { marginLeft: isCompact ? 0 : 232, marginTop: bannerHeight, minHeight: `calc(100vh - ${bannerHeight}px)`, display: 'flex', flexDirection: 'column' }
+              ? { marginLeft: isCompact ? 0 : 232, marginTop: 0, height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+              : { marginLeft: isCompact ? 0 : 232, marginTop: 0, minHeight: '100vh', display: 'flex', flexDirection: 'column' }
           }
         >
           <WorkspaceHeader

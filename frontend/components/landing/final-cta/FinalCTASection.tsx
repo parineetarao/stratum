@@ -131,11 +131,11 @@ export default function FinalCTASection() {
             className={isMobile ? 'flex flex-col w-full' : 'flex items-center justify-center flex-wrap'}
             style={{ gap: isMobile ? 14 : 30 }}
           >
-            <CTAButton href="/login" variant="primary" fullWidth={isMobile}>
-              Start your project
+            <CTAButton href="/register" variant="primary" fullWidth={isMobile}>
+              Sign up free
             </CTAButton>
-            <CTAButton href="/demo" variant="secondary" fullWidth={isMobile}>
-              View demo
+            <CTAButton href="/login" variant="secondary" fullWidth={isMobile}>
+              Log in
             </CTAButton>
           </motion.div>
         </motion.div>

@@ -1,15 +1,15 @@
 import Link from 'next/link';
 
 interface HeroActionsProps {
-  exploreHref?: string;
+  signupHref?: string;
   loginHref?: string;
 }
 
-export default function HeroActions({ exploreHref = '/demo', loginHref = '/login' }: HeroActionsProps) {
+export default function HeroActions({ signupHref = '/register', loginHref = '/login' }: HeroActionsProps) {
   return (
     <div className="flex flex-wrap items-center justify-center" style={{ marginTop: 34, gap: 14 }}>
       <Link
-        href={exploreHref}
+        href={signupHref}
         className="no-underline transition-transform duration-150"
         style={{
           padding: '14px 20px',
@@ -20,7 +20,7 @@ export default function HeroActions({ exploreHref = '/demo', loginHref = '/login
           fontWeight: 600,
         }}
       >
-        Explore Demo
+        Get Started
       </Link>
       <Link
         href={loginHref}

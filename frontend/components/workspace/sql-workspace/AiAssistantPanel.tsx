@@ -12,7 +12,6 @@ import {
   type SqlEnvironment,
 } from '@/lib/api';
 import { actionButtonStyle } from './uiHelpers';
-import { useDemoGuard } from '@/components/workspace/demoGuard';
 
 type AiTab = 'explain' | 'optimize' | 'generate';
 
@@ -22,8 +21,6 @@ interface AiAssistantPanelProps {
   environment: SqlEnvironment;
   autoExplainToken: number;
   onInsertGenerated: (sql: string) => void;
-  isDemo?: boolean;
-  demoQueryId?: string;
 }
 
 export default function AiAssistantPanel({
@@ -32,10 +29,7 @@ export default function AiAssistantPanel({
   environment,
   autoExplainToken,
   onInsertGenerated,
-  isDemo = false,
-  demoQueryId,
 }: AiAssistantPanelProps) {
-  const { guard, modal: signupModal } = useDemoGuard();
   const [tab, setTab] = useState<AiTab>('explain');
 
   const [explainResult, setExplainResult] = useState<SQLExplainResponse | null>(null);
@@ -53,11 +47,10 @@ export default function AiAssistantPanel({
 
   useEffect(() => {
     if (autoExplainToken === 0 || !sql.trim()) return;
-    if (isDemo && !demoQueryId) return;
     let cancelled = false;
     setExplainLoading(true);
     setExplainError(null);
-    explainSql(projectId, sql, environment, isDemo ? demoQueryId : undefined)
+    explainSql(projectId, sql, environment)
       .then((data) => {
         if (!cancelled) setExplainResult(data);
       })
@@ -160,7 +153,7 @@ export default function AiAssistantPanel({
 
         {tab === 'optimize' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <button type="button" onClick={() => guard(handleOptimize)} disabled={!sql.trim() || optimizeLoading} style={actionButtonStyle(!sql.trim() || optimizeLoading, true)}>
+            <button type="button" onClick={handleOptimize} disabled={!sql.trim() || optimizeLoading} style={actionButtonStyle(!sql.trim() || optimizeLoading, true)}>
               {optimizeLoading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Gauge size={13} aria-hidden="true" />}
               Analyze Query
             </button>
@@ -223,7 +216,7 @@ export default function AiAssistantPanel({
                 padding: 10,
               }}
             />
-            <button type="button" onClick={() => guard(handleGenerate)} disabled={!prompt.trim() || generateLoading} style={actionButtonStyle(!prompt.trim() || generateLoading, true)}>
+            <button type="button" onClick={handleGenerate} disabled={!prompt.trim() || generateLoading} style={actionButtonStyle(!prompt.trim() || generateLoading, true)}>
               {generateLoading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Wand2 size={13} aria-hidden="true" />}
               Generate SQL
             </button>
@@ -244,7 +237,6 @@ export default function AiAssistantPanel({
           </div>
         )}
       </div>
-      {signupModal}
     </div>
   );
 }

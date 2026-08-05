@@ -68,7 +68,6 @@ export default function WorkspaceSidebar({
   const router = useRouter();
   const userEmail = useAuthStore((state) => state.user?.email);
   const { project, source } = overview;
-  const isDemo = Boolean(overview.is_demo);
 
   const handleLogout = async () => {
     try {
@@ -142,7 +141,6 @@ export default function WorkspaceSidebar({
         background: '#030407',
         borderRight: '1px solid rgba(148, 163, 184, 0.14)',
       }}
-      data-demo-sidebar={isDemo || undefined}
     >
       <div className="flex items-center justify-between" style={{ padding: '20px 18px 16px' }}>
         <WorkspaceLogo />
@@ -220,22 +218,18 @@ export default function WorkspaceSidebar({
         </div>
         {WORKFLOW_NAV_ITEMS.map(renderItem)}
 
-        {!isDemo && (
-          <>
-            <div
-              style={{
-                fontSize: 10.5,
-                fontWeight: 600,
-                letterSpacing: '0.08em',
-                color: 'rgba(226, 232, 240, 0.35)',
-                padding: '14px 12px 6px',
-              }}
-            >
-              MANAGEMENT
-            </div>
-            {MANAGEMENT_NAV_ITEMS.map(renderItem)}
-          </>
-        )}
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            color: 'rgba(226, 232, 240, 0.35)',
+            padding: '14px 12px 6px',
+          }}
+        >
+          MANAGEMENT
+        </div>
+        {MANAGEMENT_NAV_ITEMS.map(renderItem)}
       </nav>
 
       {userEmail && (
