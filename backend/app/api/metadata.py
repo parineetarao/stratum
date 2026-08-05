@@ -16,7 +16,8 @@ from app.schemas.metadata_catalog import (
     CatalogOverview, SchemaSummary, CatalogTableSummary,
     TableDetailResponse, IndexInfo, ConstraintInfo
 )
-from app.api.deps import get_current_user
+from typing import Optional
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector
 from app.engine.metadata_discovery import discover_schema
@@ -41,13 +42,8 @@ def get_connector(connection: Connection):
         raise ValueError(f"Unsupported connection type: {connection.connection_type}")
 
 
-def get_project_and_connection(project_id: int, user_id: int, db: Session):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == user_id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+def get_project_and_connection(project_id: int, user_id: Optional[int], db: Session):
+    project = get_project_for_access(project_id, db, user_id)
 
     connection = db.query(Connection).filter(
         Connection.project_id == project_id
@@ -87,6 +83,7 @@ def discover_metadata(
     project, connection = get_project_and_connection(
         project_id, current_user.id, db
     )
+    ensure_project_is_mutable(project)
     connector = get_connector(connection)
 
     try:
@@ -195,6 +192,7 @@ def refresh_schema_with_drift(
     project, connection = get_project_and_connection(
         project_id, current_user.id, db
     )
+    ensure_project_is_mutable(project)
 
     snapshots = db.query(SchemaSnapshot).filter(
         SchemaSnapshot.project_id == project_id
@@ -367,14 +365,9 @@ def refresh_schema_with_drift(
 def get_schema(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     tables = db.query(DiscoveredTable).filter(
         DiscoveredTable.project_id == project_id
@@ -422,14 +415,14 @@ def get_schema(
 def get_metadata_catalog(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Normalized data-catalog overview (schemas + tables) for the Metadata
     page. Backed by persisted discovery results — run discovery first.
     """
     project, connection = get_project_and_connection(
-        project_id, current_user.id, db
+        project_id, current_user.id if current_user else None, db
     )
 
     tables = db.query(DiscoveredTable).filter(
@@ -509,14 +502,14 @@ def get_catalog_table_detail(
     project_id: int,
     table_name: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Full detail for a single table: columns (persisted), plus best-effort
     live indexes/constraints/sample rows/size/DDL from the source connector.
     """
     project, connection = get_project_and_connection(
-        project_id, current_user.id, db
+        project_id, current_user.id if current_user else None, db
     )
 
     db_table = db.query(DiscoveredTable).filter(

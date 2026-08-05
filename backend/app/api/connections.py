@@ -21,7 +21,8 @@ from app.schemas.data_source import (
     DataSourceStats, PostgresConnectionDetails, PostgresServerInfo,
     CsvFileDetails, ActivityLogEntry
 )
-from app.api.deps import get_current_user
+from typing import Optional
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector, detect_csv_dialect
 from app.core.connection_string import parse_postgres_connection_string
@@ -97,7 +98,8 @@ def test_postgres_connection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    get_project_or_404(project_id, current_user.id, db)
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
     try:
         connector = PostgresConnector(
             request.connection_string,
@@ -128,7 +130,8 @@ def connect_postgres(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    get_project_or_404(project_id, current_user.id, db)
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     try:
         connector = PostgresConnector(
@@ -178,7 +181,8 @@ async def connect_file(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    get_project_or_404(project_id, current_user.id, db)
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     filename = file.filename
     if not filename.endswith((".csv", ".xlsx", ".xls")):
@@ -222,9 +226,9 @@ async def connect_file(
 def get_connection(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    get_project_or_404(project_id, current_user.id, db)
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
     connection = db.query(Connection).filter(Connection.project_id == project_id).first()
     if not connection:
         raise HTTPException(status_code=404, detail="No connection found for this project")
@@ -235,9 +239,9 @@ def get_connection(
 def get_data_source_detail(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    get_project_or_404(project_id, current_user.id, db)
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
     connection = get_connection_or_404(project_id, db)
 
     health = check_connection_health(connection)
@@ -335,7 +339,8 @@ def test_stored_connection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    get_project_or_404(project_id, current_user.id, db)
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
     connection = get_connection_or_404(project_id, db)
 
     health = check_connection_health(connection)
@@ -353,9 +358,9 @@ def get_data_source_activity(
     project_id: int,
     limit: int = 50,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    get_project_or_404(project_id, current_user.id, db)
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
     entries = db.query(ConnectionActivity).filter(
         ConnectionActivity.project_id == project_id
     ).order_by(ConnectionActivity.created_at.desc()).limit(min(limit, 200)).all()

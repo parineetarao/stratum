@@ -1,6 +1,12 @@
 'use client';
 
 import { AlertTriangle, Loader2, X } from 'lucide-react';
+import DisabledInDemo from '@/components/workspace/demoGuard';
+
+const CLEANING_DEMO_COPY = {
+  title: 'Review cleaning operations',
+  body: 'Sign up and create your own project to review and apply cleaning operations.',
+};
 
 export default function ApplyConfirmModal({
   approvedCount,
@@ -84,28 +90,30 @@ export default function ApplyConfirmModal({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isApplying}
-            className="flex items-center justify-center"
-            style={{
-              gap: 7,
-              height: 36,
-              padding: '0 16px',
-              borderRadius: 8,
-              border: 'none',
-              background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: isApplying ? 'not-allowed' : 'pointer',
-              opacity: isApplying ? 0.7 : 1,
-            }}
-          >
-            {isApplying && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
-            Apply {approvedCount} Change{approvedCount === 1 ? '' : 's'}
-          </button>
+          <DisabledInDemo {...CLEANING_DEMO_COPY}>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={isApplying}
+              className="flex items-center justify-center"
+              style={{
+                gap: 7,
+                height: 36,
+                padding: '0 16px',
+                borderRadius: 8,
+                border: 'none',
+                background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: isApplying ? 'not-allowed' : 'pointer',
+                opacity: isApplying ? 0.7 : 1,
+              }}
+            >
+              {isApplying && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
+              Apply {approvedCount} Change{approvedCount === 1 ? '' : 's'}
+            </button>
+          </DisabledInDemo>
         </div>
       </div>
     </div>

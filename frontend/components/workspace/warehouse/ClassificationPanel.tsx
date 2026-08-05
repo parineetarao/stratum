@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { Layers, RefreshCw, Star, Table2 } from 'lucide-react';
 import type { WarehouseDesignResponse, WarehouseClassification } from '@/lib/api';
 import { formatCount } from '@/lib/formatCount';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 function actionButtonStyle(disabled: boolean, primary = false): React.CSSProperties {
   return {
@@ -77,28 +78,29 @@ function OverrideMenu({
           }}
         >
           {(['fact', 'dimension'] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              disabled={option === currentKind}
-              onClick={() => {
-                setOpen(false);
-                onOverride(tableName, option);
-              }}
-              style={{
-                width: '100%',
-                padding: '8px 9px',
-                borderRadius: 6,
-                background: 'transparent',
-                border: 'none',
-                textAlign: 'left',
-                fontSize: 12.5,
-                color: option === currentKind ? 'rgba(226,232,240,0.35)' : '#f4f4f5',
-                cursor: option === currentKind ? 'not-allowed' : 'pointer',
-              }}
-            >
-              Reclassify as {option === 'fact' ? 'Fact Table' : 'Dimension Table'}
-            </button>
+            <DisabledInDemo key={option}>
+              <button
+                type="button"
+                disabled={option === currentKind}
+                onClick={() => {
+                  setOpen(false);
+                  onOverride(tableName, option);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '8px 9px',
+                  borderRadius: 6,
+                  background: 'transparent',
+                  border: 'none',
+                  textAlign: 'left',
+                  fontSize: 12.5,
+                  color: option === currentKind ? 'rgba(226,232,240,0.35)' : '#f4f4f5',
+                  cursor: option === currentKind ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Reclassify as {option === 'fact' ? 'Fact Table' : 'Dimension Table'}
+              </button>
+            </DisabledInDemo>
           ))}
         </div>
       )}
@@ -303,10 +305,12 @@ export default function ClassificationPanel({
       </div>
 
       <div style={{ marginTop: 'auto', paddingTop: 6 }}>
-        <button type="button" onClick={onReclassify} disabled={isReclassifying} style={actionButtonStyle(isReclassifying)}>
-          <RefreshCw size={13} className={isReclassifying ? 'animate-spin' : ''} aria-hidden="true" />
-          Reclassify Schema
-        </button>
+        <DisabledInDemo>
+          <button type="button" onClick={onReclassify} disabled={isReclassifying} style={actionButtonStyle(isReclassifying)}>
+            <RefreshCw size={13} className={isReclassifying ? 'animate-spin' : ''} aria-hidden="true" />
+            Reclassify Schema
+          </button>
+        </DisabledInDemo>
       </div>
     </div>
   );

@@ -186,7 +186,7 @@ export default function StratumHero(props: StratumHeroProps) {
               trusted analytics through one engineering workflow.
             </p>
 
-            <HeroActions getStartedHref={props.getStartedHref} exploreHref={props.exploreHref} />
+            <HeroActions exploreHref={props.exploreHref} loginHref={props.loginHref} />
 
             <p style={{ marginTop: 24, fontSize: 14, color: 'rgba(244,244,245,0.7)' }}>
               Built for analytics engineers, data teams, and technical analysts.

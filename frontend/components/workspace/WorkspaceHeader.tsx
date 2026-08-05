@@ -6,6 +6,7 @@ import { Bell, ChevronDown, LogOut, Menu, Pencil } from 'lucide-react';
 import { logoutUser, type ProjectOverview, type ProjectStatus } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth';
 import RenameProjectDialog from '@/components/projects/RenameProjectDialog';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 const STATUS_META: Record<ProjectStatus, { color: string; dot: string }> = {
   setup_incomplete: { color: 'rgba(226, 232, 240, 0.65)', dot: 'rgba(226, 232, 240, 0.4)' },
@@ -110,24 +111,26 @@ export default function WorkspaceHeader({
             >
               {overview.project.name}
             </h1>
-            <button
-              type="button"
-              onClick={() => setIsRenaming(true)}
-              aria-label="Edit project name"
-              className="flex items-center justify-center"
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 6,
-                border: 'none',
-                background: 'transparent',
-                color: 'rgba(226, 232, 240, 0.4)',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-            >
-              <Pencil size={13} aria-hidden="true" />
-            </button>
+            <DisabledInDemo tooltip="Sign up to rename your own project">
+              <button
+                type="button"
+                onClick={() => setIsRenaming(true)}
+                aria-label="Edit project name"
+                className="flex items-center justify-center"
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 6,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'rgba(226, 232, 240, 0.4)',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <Pencil size={13} aria-hidden="true" />
+              </button>
+            </DisabledInDemo>
             {!isCompact && (
               <span
                 className="inline-flex items-center"
@@ -189,6 +192,25 @@ export default function WorkspaceHeader({
             <Bell size={15} aria-hidden="true" />
           </button>
 
+          {!user ? (
+            <button
+              type="button"
+              onClick={() => router.push('/login')}
+              style={{
+                height: 34,
+                padding: '0 14px',
+                borderRadius: 8,
+                border: '1px solid rgba(148, 163, 184, 0.24)',
+                background: 'rgba(148, 163, 184, 0.06)',
+                color: '#f4f4f5',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Log In
+            </button>
+          ) : (
           <div ref={menuRef} style={{ position: 'relative' }}>
             <button
               type="button"
@@ -279,6 +301,7 @@ export default function WorkspaceHeader({
               </div>
             )}
           </div>
+          )}
         </div>
       </header>
 

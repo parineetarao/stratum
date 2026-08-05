@@ -12,7 +12,7 @@ from app.schemas.kpi import (
     KPIResponse, KPIApproval, KPIListResponse, KPIRefreshResponse,
     KPIGenerateRequest, KPIBulkApproveRequest
 )
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector
 from app.engine.kpi_engine import recommend_kpis, execute_kpi_sql, format_kpi_value
@@ -112,14 +112,9 @@ def get_project_kpis(
     project_id: int,
     mode: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     mode_str = mode or (
         project.analysis_mode.value
@@ -143,12 +138,8 @@ def generate_project_kpis(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     if not project.domain:
         raise HTTPException(
@@ -272,12 +263,8 @@ def approve_kpi(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     kpi = db.query(KPI).filter(
         KPI.id == kpi_id,
@@ -300,12 +287,8 @@ def skip_kpi(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     kpi = db.query(KPI).filter(
         KPI.id == kpi_id,
@@ -329,12 +312,8 @@ def restore_kpi(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     kpi = db.query(KPI).filter(
         KPI.id == kpi_id,
@@ -358,12 +337,8 @@ def bulk_approve_high_confidence_kpis(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     mode_str = (payload and payload.mode) or mode or (
         project.analysis_mode.value
@@ -396,14 +371,9 @@ def get_kpi_sql(
     project_id: int,
     kpi_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     kpi = db.query(KPI).filter(
         KPI.id == kpi_id,
@@ -428,12 +398,8 @@ def refresh_kpi_values(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     connection = db.query(Connection).filter(
         Connection.project_id == project_id

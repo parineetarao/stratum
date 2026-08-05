@@ -4,17 +4,22 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   executeSql,
+  executeCuratedDemoQuery,
   saveQuery,
   getSandboxStatus,
   getProjectConnection,
+  getDemoQueries,
   extractErrorMessage,
   type SqlEnvironment,
   type Connection,
   type SavedQuery,
+  type DemoQuery,
 } from '@/lib/api';
 import { useWorkspace } from '@/components/workspace/WorkspaceContext';
+import { useDemoGuard } from '@/components/workspace/demoGuard';
 import TopBar from './TopBar';
 import SchemaBrowserPanel from './SchemaBrowserPanel';
+import DemoQueriesPanel from './DemoQueriesPanel';
 import QueryTabsBar from './QueryTabsBar';
 import EditorToolbar from './EditorToolbar';
 import SqlEditor, { type SqlEditorHandle } from './SqlEditor';
@@ -29,6 +34,8 @@ let tabCounter = 1;
 export default function SqlWorkspaceExplorer() {
   const { overview } = useWorkspace();
   const projectId = overview.project.id;
+  const isDemo = Boolean(overview.is_demo);
+  const { guard, modal: signupModal } = useDemoGuard();
   const searchParams = useSearchParams();
 
   const initialSql = searchParams.get('sql') ?? '';
@@ -48,6 +55,22 @@ export default function SqlWorkspaceExplorer() {
 
   const editorRef = useRef<SqlEditorHandle>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!isDemo || initialSql) return;
+    let cancelled = false;
+    getDemoQueries()
+      .then((queries) => {
+        if (!cancelled && queries.length > 0) {
+          handleSelectDemoQuery(queries[0]);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,12 +127,24 @@ export default function SqlWorkspaceExplorer() {
 
   const handleRun = useCallback(async () => {
     if (!activeTab || !activeTab.sql.trim() || activeTab.isRunning) return;
+
+    // In the public demo, only an unmodified curated query may execute.
+    // Anything else (including edits to a curated query) opens the signup
+    // modal instead of ever reaching the backend.
+    if (isDemo && !activeTab.demoQueryId) {
+      guard(() => {});
+      return;
+    }
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
     updateActiveTab({ isRunning: true, error: null });
 
     try {
-      const data = await executeSql(projectId, activeTab.sql, environment, controller.signal);
+      const data =
+        isDemo && activeTab.demoQueryId
+          ? await executeCuratedDemoQuery(projectId, activeTab.demoQueryId, environment, controller.signal)
+          : await executeSql(projectId, activeTab.sql, environment, controller.signal);
       updateActiveTab({ result: data, error: data.success ? null : data.error, isRunning: false });
       if (data.success) {
         setAutoExplainToken((v) => v + 1);
@@ -118,7 +153,11 @@ export default function SqlWorkspaceExplorer() {
       updateActiveTab({ error: extractErrorMessage(err, 'Query execution failed.'), result: null, isRunning: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, environment, projectId]);
+  }, [activeTab, environment, projectId, isDemo]);
+
+  function handleSelectDemoQuery(query: DemoQuery) {
+    updateActiveTab({ sql: query.sql, demoQueryId: query.id, result: null, error: null });
+  }
 
   function handleStop() {
     abortControllerRef.current?.abort();
@@ -214,7 +253,8 @@ export default function SqlWorkspaceExplorer() {
       />
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div style={{ width: leftWidth, flexShrink: 0, borderRight: '1px solid rgba(148, 163, 184, 0.15)', background: '#0a0d12', minHeight: 0 }}>
+        <div style={{ width: leftWidth, flexShrink: 0, borderRight: '1px solid rgba(148, 163, 184, 0.15)', background: '#0a0d12', minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          {isDemo && <DemoQueriesPanel activeQueryId={activeTab.demoQueryId} onSelect={handleSelectDemoQuery} />}
           <SchemaBrowserPanel
             projectId={projectId}
             environment={environment}
@@ -241,7 +281,7 @@ export default function SqlWorkspaceExplorer() {
             onStop={handleStop}
             onFormat={handleFormat}
             onClear={handleClear}
-            onSave={() => setSaveModalOpen(true)}
+            onSave={() => guard(() => setSaveModalOpen(true))}
             onNewTab={handleAddTab}
             onExport={handleExport}
             canExport={!!activeTab.result?.success}
@@ -249,7 +289,12 @@ export default function SqlWorkspaceExplorer() {
           />
 
           <div style={{ flex: '1 1 55%', minHeight: 0, borderBottom: '1px solid rgba(148, 163, 184, 0.15)' }}>
-            <SqlEditor ref={editorRef} value={activeTab.sql} onChange={(sql) => updateActiveTab({ sql })} onRun={handleRun} />
+            <SqlEditor
+              ref={editorRef}
+              value={activeTab.sql}
+              onChange={(sql) => updateActiveTab({ sql, demoQueryId: sql === activeTab.sql ? activeTab.demoQueryId : undefined })}
+              onRun={handleRun}
+            />
           </div>
 
           <div style={{ flex: '1 1 45%', minHeight: 0 }}>
@@ -271,11 +316,14 @@ export default function SqlWorkspaceExplorer() {
             environment={environment}
             autoExplainToken={autoExplainToken}
             onInsertGenerated={handleInsertGenerated}
+            isDemo={isDemo}
+            demoQueryId={activeTab.demoQueryId}
           />
         </div>
       </div>
 
       {saveModalOpen && <SaveQueryModal onCancel={() => setSaveModalOpen(false)} onSave={handleSaveQuery} />}
+      {signupModal}
     </div>
   );
 }

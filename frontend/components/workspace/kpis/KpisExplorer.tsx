@@ -18,6 +18,7 @@ import {
   type SandboxStatusResponse,
 } from '@/lib/api';
 import { useWorkspace } from '@/components/workspace/WorkspaceContext';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 import KpiCard from './KpiCard';
 import KpiHeaderControls, { type KpiCategoryFilter } from './KpiHeaderControls';
 import KpiApprovalBar from './KpiApprovalBar';
@@ -315,32 +316,34 @@ export default function KpisExplorer() {
           >
             Click below to generate KPI recommendations based on your schema and domain metadata.
           </p>
-          <button
-            type="button"
-            onClick={handleRegenerate}
-            disabled={isRegenerating}
-            style={{
-              height: 40,
-              padding: '0 20px',
-              borderRadius: 8,
-              border: 'none',
-              background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
-              color: '#ffffff',
-              fontSize: 13.5,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            {isRegenerating ? (
-              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-            ) : (
-              <Wand2 size={16} aria-hidden="true" />
-            )}
-            Generate KPIs
-          </button>
+          <DisabledInDemo>
+            <button
+              type="button"
+              onClick={handleRegenerate}
+              disabled={isRegenerating}
+              style={{
+                height: 40,
+                padding: '0 20px',
+                borderRadius: 8,
+                border: 'none',
+                background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
+                color: '#ffffff',
+                fontSize: 13.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              {isRegenerating ? (
+                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Wand2 size={16} aria-hidden="true" />
+              )}
+              Generate KPIs
+            </button>
+          </DisabledInDemo>
         </div>
       ) : (
         <>

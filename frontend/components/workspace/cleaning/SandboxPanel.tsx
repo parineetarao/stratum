@@ -2,6 +2,12 @@
 
 import { Boxes, CheckCircle2, Loader2, RefreshCw, Table2, Clock, Database } from 'lucide-react';
 import type { CleaningPreviewResult, SandboxStatusResponse } from '@/lib/api';
+import DisabledInDemo from '@/components/workspace/demoGuard';
+
+const CLEANING_DEMO_COPY = {
+  title: 'Review cleaning operations',
+  body: 'Sign up and create your own project to review and apply cleaning operations.',
+};
 
 function actionButtonStyle(disabled: boolean, primary = false): React.CSSProperties {
   return {
@@ -119,10 +125,12 @@ export default function SandboxPanel({
               Preview uses an isolated sandbox. No changes are made to your source data until you explicitly apply
               them.
             </p>
-            <button type="button" onClick={onInitialize} disabled={isInitializing} style={actionButtonStyle(isInitializing, true)}>
-              {isInitializing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Database size={14} aria-hidden="true" />}
-              Initialize Sandbox
-            </button>
+            <DisabledInDemo {...CLEANING_DEMO_COPY}>
+              <button type="button" onClick={onInitialize} disabled={isInitializing} style={actionButtonStyle(isInitializing, true)}>
+                {isInitializing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Database size={14} aria-hidden="true" />}
+                Initialize Sandbox
+              </button>
+            </DisabledInDemo>
           </>
         ) : (
           <>
@@ -135,14 +143,18 @@ export default function SandboxPanel({
               <MiniStat icon={Clock} value={formatRelativeTime(status?.last_synced_at ?? null)} label="Last synced" />
             </div>
             <div className="flex flex-col" style={{ gap: 8 }}>
-              <button type="button" onClick={onRefresh} disabled={isRefreshing} style={actionButtonStyle(isRefreshing)}>
-                <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
-                Refresh Sandbox Data
-              </button>
-              <button type="button" onClick={onPreview} disabled={isPreviewing} style={actionButtonStyle(isPreviewing, true)}>
-                {isPreviewing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
-                Preview in Sandbox
-              </button>
+              <DisabledInDemo {...CLEANING_DEMO_COPY}>
+                <button type="button" onClick={onRefresh} disabled={isRefreshing} style={actionButtonStyle(isRefreshing)}>
+                  <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
+                  Refresh Sandbox Data
+                </button>
+              </DisabledInDemo>
+              <DisabledInDemo {...CLEANING_DEMO_COPY}>
+                <button type="button" onClick={onPreview} disabled={isPreviewing} style={actionButtonStyle(isPreviewing, true)}>
+                  {isPreviewing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
+                  Preview in Sandbox
+                </button>
+              </DisabledInDemo>
             </div>
           </>
         )}

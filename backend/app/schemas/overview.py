@@ -76,6 +76,7 @@ class ProjectOverviewProject(BaseModel):
     analysis_mode: Optional[AnalysisMode]
     created_at: datetime
     updated_at: Optional[datetime]
+    is_demo: bool = False
 
     class Config:
         from_attributes = True
@@ -83,6 +84,7 @@ class ProjectOverviewProject(BaseModel):
 
 class ProjectOverviewResponse(BaseModel):
     project: ProjectOverviewProject
+    is_demo: bool = False
     status: ProjectStatus
     status_label: str
     source: SourceSummary

@@ -5,6 +5,12 @@ import Link from 'next/link';
 import { ChevronDown, ChevronRight, Code2 } from 'lucide-react';
 import type { CleaningRecommendation, CleaningConfidence } from '@/lib/api';
 import { stageRoute } from '@/lib/workspaceNav';
+import DisabledInDemo from '@/components/workspace/demoGuard';
+
+const CLEANING_DEMO_COPY = {
+  title: 'Review cleaning operations',
+  body: 'Sign up and create your own project to review and apply cleaning operations.',
+};
 
 const CONFIDENCE_META: Record<CleaningConfidence, { label: string; color: string; bg: string }> = {
   high: { label: 'High', color: '#34d399', bg: 'rgba(52, 211, 153, 0.12)' },
@@ -119,22 +125,26 @@ function RecommendationRow({
         </div>
 
         <div className="flex items-center" style={{ gap: 8, flexShrink: 0 }}>
-          <button
-            type="button"
-            disabled={busy || rec.applied}
-            onClick={() => onDecide(rec.id, 'approved')}
-            style={actionBtnStyle(rec.status === 'approved', 'approve')}
-          >
-            Approve
-          </button>
-          <button
-            type="button"
-            disabled={busy || rec.applied}
-            onClick={() => onDecide(rec.id, 'rejected')}
-            style={actionBtnStyle(rec.status === 'rejected', 'reject')}
-          >
-            Reject
-          </button>
+          <DisabledInDemo {...CLEANING_DEMO_COPY}>
+            <button
+              type="button"
+              disabled={busy || rec.applied}
+              onClick={() => onDecide(rec.id, 'approved')}
+              style={actionBtnStyle(rec.status === 'approved', 'approve')}
+            >
+              Approve
+            </button>
+          </DisabledInDemo>
+          <DisabledInDemo {...CLEANING_DEMO_COPY}>
+            <button
+              type="button"
+              disabled={busy || rec.applied}
+              onClick={() => onDecide(rec.id, 'rejected')}
+              style={actionBtnStyle(rec.status === 'rejected', 'reject')}
+            >
+              Reject
+            </button>
+          </DisabledInDemo>
         </div>
       </div>
     </div>

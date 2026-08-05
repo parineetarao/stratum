@@ -21,6 +21,7 @@ interface WorkspaceSidebarProps {
   isOverlay: boolean;
   isOpen: boolean;
   onClose: () => void;
+  topOffset?: number;
 }
 
 function WorkspaceLogo() {
@@ -61,11 +62,13 @@ export default function WorkspaceSidebar({
   isOverlay,
   isOpen,
   onClose,
+  topOffset = 0,
 }: WorkspaceSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const userEmail = useAuthStore((state) => state.user?.email);
   const { project, source } = overview;
+  const isDemo = Boolean(overview.is_demo);
 
   const handleLogout = async () => {
     try {
@@ -139,6 +142,7 @@ export default function WorkspaceSidebar({
         background: '#030407',
         borderRight: '1px solid rgba(148, 163, 184, 0.14)',
       }}
+      data-demo-sidebar={isDemo || undefined}
     >
       <div className="flex items-center justify-between" style={{ padding: '20px 18px 16px' }}>
         <WorkspaceLogo />
@@ -216,18 +220,22 @@ export default function WorkspaceSidebar({
         </div>
         {WORKFLOW_NAV_ITEMS.map(renderItem)}
 
-        <div
-          style={{
-            fontSize: 10.5,
-            fontWeight: 600,
-            letterSpacing: '0.08em',
-            color: 'rgba(226, 232, 240, 0.35)',
-            padding: '14px 12px 6px',
-          }}
-        >
-          MANAGEMENT
-        </div>
-        {MANAGEMENT_NAV_ITEMS.map(renderItem)}
+        {!isDemo && (
+          <>
+            <div
+              style={{
+                fontSize: 10.5,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                color: 'rgba(226, 232, 240, 0.35)',
+                padding: '14px 12px 6px',
+              }}
+            >
+              MANAGEMENT
+            </div>
+            {MANAGEMENT_NAV_ITEMS.map(renderItem)}
+          </>
+        )}
       </nav>
 
       {userEmail && (
@@ -297,7 +305,7 @@ export default function WorkspaceSidebar({
 
   if (!isOverlay) {
     return (
-      <div style={{ position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 20 }}>
+      <div style={{ position: 'fixed', top: topOffset, left: 0, height: `calc(100vh - ${topOffset}px)`, zIndex: 20 }}>
         {content}
       </div>
     );
@@ -314,9 +322,9 @@ export default function WorkspaceSidebar({
       <div
         style={{
           position: 'fixed',
-          top: 0,
+          top: topOffset,
           left: 0,
-          height: '100vh',
+          height: `calc(100vh - ${topOffset}px)`,
           zIndex: 30,
           transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.2s ease',

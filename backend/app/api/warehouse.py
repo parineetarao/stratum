@@ -14,7 +14,8 @@ from app.schemas.warehouse import (
     WarehouseClassificationOverride, WarehousePreviewResponse,
     WarehouseTableResult, JoinValidation, AggregationValidation
 )
-from app.api.deps import get_current_user
+from typing import Optional
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector
 from app.engine.warehouse_designer import design_warehouse
@@ -117,12 +118,8 @@ def generate_warehouse_design(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     schema = build_schema_from_db(project_id, db)
     if not schema:
@@ -172,14 +169,9 @@ def generate_warehouse_design(
 def get_warehouse_design(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     design = db.query(WarehouseDesign).filter(
         WarehouseDesign.project_id == project_id
@@ -201,12 +193,8 @@ def approve_warehouse_design(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     design = db.query(WarehouseDesign).filter(
         WarehouseDesign.project_id == project_id
@@ -236,12 +224,8 @@ def override_warehouse_classification(
     Manually reclassifies a single table as a fact or dimension table,
     then regenerates the warehouse design (DDL, diagram data) around it.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     design = db.query(WarehouseDesign).filter(
         WarehouseDesign.project_id == project_id
@@ -309,12 +293,8 @@ def preview_warehouse(
     join integrity and sample aggregations. The source database is never
     touched — everything runs against the sandbox copy.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     design = db.query(WarehouseDesign).filter(
         WarehouseDesign.project_id == project_id

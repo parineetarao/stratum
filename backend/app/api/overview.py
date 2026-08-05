@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from app.database import get_db
 from app.models.user import User
@@ -15,7 +15,7 @@ from app.models.warehouse import WarehouseDesign
 from app.models.kpi import KPI
 from app.models.saved_query import SavedQuery
 from app.models.dashboard_config import DashboardConfig
-from app.api.deps import get_current_user
+from app.api.deps import get_optional_user, get_project_for_access
 from app.api.quality import load_profiling_tables
 from app.engine.quality_scorer import score_profile
 from app.core.connection_string import parse_postgres_connection_string
@@ -84,23 +84,13 @@ NEXT_STEP_COPY = {
 }
 
 
-def get_project_or_404(project_id: int, user_id: int, db: Session) -> Project:
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == user_id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
-
-
 @router.get("/{project_id}/overview", response_model=ProjectOverviewResponse)
 def get_project_overview(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    project = get_project_or_404(project_id, current_user.id, db)
+    project = get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     connection = db.query(Connection).filter(
         Connection.project_id == project_id
@@ -327,6 +317,7 @@ def get_project_overview(
 
     return ProjectOverviewResponse(
         project=ProjectOverviewProject.model_validate(project),
+        is_demo=project.is_demo,
         status=status,
         status_label=status_label,
         source=source,

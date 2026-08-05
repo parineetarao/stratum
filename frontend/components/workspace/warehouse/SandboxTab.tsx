@@ -14,6 +14,7 @@ import {
 } from '@/lib/api';
 import { stageRoute } from '@/lib/workspaceNav';
 import { formatCount } from '@/lib/formatCount';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 function actionButtonStyle(disabled: boolean, primary = false): React.CSSProperties {
   return {
@@ -200,10 +201,12 @@ export default function SandboxTab({ design, projectId }: { design: WarehouseDes
           </div>
         )}
 
-        <button type="button" onClick={runPreview} disabled={isPreviewing} style={actionButtonStyle(isPreviewing, true)}>
-          <Database size={14} aria-hidden="true" />
-          Preview Warehouse
-        </button>
+        <DisabledInDemo>
+          <button type="button" onClick={runPreview} disabled={isPreviewing} style={actionButtonStyle(isPreviewing, true)}>
+            <Database size={14} aria-hidden="true" />
+            Preview Warehouse
+          </button>
+        </DisabledInDemo>
       </div>
     );
   }
@@ -411,10 +414,12 @@ export default function SandboxTab({ design, projectId }: { design: WarehouseDes
       </div>
 
       <div className="flex flex-col" style={{ gap: 8 }}>
-        <button type="button" onClick={handleRefresh} disabled={isRefreshing} style={actionButtonStyle(isRefreshing)}>
-          <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
-          {isRefreshing ? 'Rebuilding & revalidating…' : 'Refresh Sandbox Data'}
-        </button>
+        <DisabledInDemo>
+          <button type="button" onClick={handleRefresh} disabled={isRefreshing} style={actionButtonStyle(isRefreshing)}>
+            <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
+            {isRefreshing ? 'Rebuilding & revalidating…' : 'Refresh Sandbox Data'}
+          </button>
+        </DisabledInDemo>
         <Link href={openInSqlWorkspaceHref} style={actionButtonStyle(false, true)}>
           <Terminal size={14} aria-hidden="true" />
           Open in SQL Workspace

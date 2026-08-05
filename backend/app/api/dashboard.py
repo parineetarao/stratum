@@ -12,7 +12,7 @@ from app.schemas.dashboard import (
     DashboardRefreshResponse, ChartConfigUpdate, ChartConfigResponse,
     DashboardReportResponse, ReportSection
 )
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector
 from app.engine.chart_selector import format_value, get_supported_chart_types
@@ -308,19 +308,14 @@ def build_query_widget_charts(
 def get_dashboard(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Assembles the dashboard: scalar KPI summary cards plus a curated
     set of analytical breakdown charts derived from those KPIs'
     measures and the schema's own dimensions/relationships.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     approved_kpis = db.query(KPI).filter(
         KPI.project_id == project_id,
@@ -378,12 +373,8 @@ def refresh_dashboard(
     Re-executes all approved KPI SQL queries and updates stored values,
     then rebuilds the analytical charts from the refreshed data.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     approved_kpis = db.query(KPI).filter(
         KPI.project_id == project_id,
@@ -443,12 +434,8 @@ def save_chart_config(
     Saves or updates chart configuration for a specific widget.
     Called when the user changes chart type, title, size, or visibility.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     existing = db.query(DashboardConfig).filter(
         DashboardConfig.project_id == project_id,
@@ -491,12 +478,8 @@ def add_query_widget(
     'query{id}', chart_options carrying the saved_query_id + chosen
     columns so it can be re-executed on every future dashboard load).
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     saved_query = db.query(SavedQuery).filter(
         SavedQuery.id == payload.saved_query_id,
@@ -620,19 +603,14 @@ def add_query_widget(
 def generate_dashboard_report(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Generates a structured report of the entire project analysis.
     Contains quality score, KPI summary, and AI insights.
     Frontend uses this data to generate a downloadable PDF.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     approved_kpis = db.query(KPI).filter(
         KPI.project_id == project_id,

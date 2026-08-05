@@ -1,0 +1,57 @@
+
+> stratum-frontend@0.1.0 dev
+> next dev
+
+  ▲ Next.js 14.2.3
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.1s
+ ○ Compiling / ...
+ ✓ Compiled / in 4s (1565 modules)
+ GET / 200 in 4271ms
+ ✓ Compiled in 312ms (748 modules)
+ ○ Compiling /login ...
+ ✓ Compiled /login in 726ms (1735 modules)
+ GET /login 200 in 870ms
+ ✓ Compiled /demo in 272ms (1747 modules)
+ GET /demo 200 in 363ms
+ GET / 200 in 181ms
+(node:35044) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ○ Compiling /projects/[projectId] ...
+ ✓ Compiled /projects/[projectId] in 1500ms (1858 modules)
+ ○ Compiling /projects/[projectId]/metadata ...
+ ✓ Compiled /projects/[projectId]/metadata in 862ms (1909 modules)
+ ○ Compiling /projects/[projectId]/data-source ...
+ ✓ Compiled /projects/[projectId]/data-source in 509ms (1965 modules)
+ GET /projects/3/data-source 200 in 197ms
+ ○ Compiling /projects/[projectId]/relationships ...
+ ✓ Compiled /projects/[projectId]/relationships in 1918ms (2891 modules)
+ ○ Compiling /projects/[projectId]/data-quality ...
+ ✓ Compiled /projects/[projectId]/data-quality in 974ms (2915 modules)
+ ○ Compiling /projects/[projectId]/cleaning ...
+ ✓ Compiled /projects/[projectId]/cleaning in 872ms (2452 modules)
+ ✓ Compiled /projects/[projectId]/warehouse in 486ms (2487 modules)
+ ✓ Compiled /projects/[projectId]/insights in 394ms (2503 modules)
+ ○ Compiling /projects/[projectId]/dashboard ...
+ ✓ Compiled /projects/[projectId]/dashboard in 14.8s (3642 modules)
+ GET /projects/3/insights 200 in 7503ms
+ ✓ Compiled /projects/[projectId]/warehouse in 307ms (1615 modules)
+ GET /projects/2/dashboard 200 in 16120ms
+ GET /projects/3/warehouse 200 in 535ms
+ ○ Compiling /projects/[projectId]/sql ...
+ ✓ Compiled /projects/[projectId]/sql in 4s (3744 modules)
+ ○ Compiling /projects ...
+ ✓ Compiled /projects in 2.3s (3794 modules)
+ GET /projects 200 in 191ms
+ ✓ Compiled /projects/[projectId] in 440ms (1686 modules)
+ ○ Compiling /projects/[projectId]/kpis ...
+ ✓ Compiled /projects/[projectId]/kpis in 2s (3353 modules)
+ ○ Compiling /projects/[projectId]/data-source ...
+ ✓ Compiled /projects/[projectId]/data-source in 754ms (1208 modules)
+ ○ Compiling /projects/[projectId]/data-quality ...
+ ✓ Compiled /projects/[projectId]/data-quality in 1518ms (1167 modules)
+ ○ Compiling /projects/[projectId]/relationships ...
+ ✓ Compiled /projects/[projectId]/relationships in 747ms (1628 modules)

@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
 import type { GraphRelationship } from './graphModel';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 interface RelationshipCardProps {
   item: GraphRelationship;
@@ -80,54 +81,58 @@ export default function RelationshipCard({ item, selected, busy, onSelect, onAcc
 
           {needsDecision && (
             <div className="flex items-center" style={{ gap: 8, marginTop: 12 }}>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAccept();
-                }}
-                style={{
-                  flex: 1,
-                  height: 30,
-                  borderRadius: 7,
-                  border: 'none',
-                  background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
-                  color: '#fff',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                  opacity: busy ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                }}
-              >
-                {busy ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : 'Accept'}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onReject();
-                }}
-                style={{
-                  flex: 1,
-                  height: 30,
-                  borderRadius: 7,
-                  border: '1px solid rgba(148, 163, 184, 0.24)',
-                  background: 'rgba(148, 163, 184, 0.06)',
-                  color: '#f4f4f5',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                  opacity: busy ? 0.6 : 1,
-                }}
-              >
-                Reject
-              </button>
+              <DisabledInDemo>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAccept();
+                  }}
+                  style={{
+                    flex: 1,
+                    height: 30,
+                    borderRadius: 7,
+                    border: 'none',
+                    background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: busy ? 'not-allowed' : 'pointer',
+                    opacity: busy ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                  }}
+                >
+                  {busy ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : 'Accept'}
+                </button>
+              </DisabledInDemo>
+              <DisabledInDemo>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReject();
+                  }}
+                  style={{
+                    flex: 1,
+                    height: 30,
+                    borderRadius: 7,
+                    border: '1px solid rgba(148, 163, 184, 0.24)',
+                    background: 'rgba(148, 163, 184, 0.06)',
+                    color: '#f4f4f5',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: busy ? 'not-allowed' : 'pointer',
+                    opacity: busy ? 0.6 : 1,
+                  }}
+                >
+                  Reject
+                </button>
+              </DisabledInDemo>
             </div>
           )}
         </div>

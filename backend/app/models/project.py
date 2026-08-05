@@ -32,6 +32,7 @@ class Project(Base):
     Enum(AnalysisMode),
     default=AnalysisMode.source
 )
+    is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
 
     owner = relationship("User", back_populates="projects")
 

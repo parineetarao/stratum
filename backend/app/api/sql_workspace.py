@@ -1,4 +1,5 @@
 import time
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -16,13 +17,14 @@ from app.schemas.sql_workspace import (
     SaveQueryRequest, SavedQueryResponse,
     QueryHistoryResponse
 )
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector
 from app.engine.sandbox_engine import run_query_in_sandbox, sandbox_exists
 from app.ai.sql_explainer import explain_sql
 from app.ai.sql_optimizer import optimize_sql
 from app.ai.sql_generator_ai import generate_sql_from_prompt
+from app.demo.curated_queries import get_curated_query
 
 router = APIRouter(prefix="/projects", tags=["SQL Workspace"])
 
@@ -65,20 +67,32 @@ def execute_sql(
     project_id: int,
     request: SQLExecuteRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Executes SQL against either the source database or sandbox.
     Environment is determined by the request body, not project mode,
     so users can query both environments from the same workspace.
     Returns results as columns and rows for frontend table rendering.
+
+    Demo project: never trusts request.sql. Only a query_id from the
+    curated, backend-owned mapping may be executed - arbitrary SQL sent
+    by the browser is rejected outright.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id if current_user else None)
+
+    if project.is_demo:
+        curated = get_curated_query(request.query_id) if request.query_id else None
+        if not curated:
+            raise HTTPException(
+                status_code=400,
+                detail="Only curated demo queries can be run in the public demo."
+            )
+        sql_to_run = curated["sql"]
+    else:
+        if not request.sql:
+            raise HTTPException(status_code=400, detail="sql is required")
+        sql_to_run = request.sql
 
     environment = request.environment
 
@@ -91,7 +105,7 @@ def execute_sql(
                     status_code=400,
                     detail="Sandbox not initialized"
                 )
-            df = run_query_in_sandbox(project_id, request.sql)
+            df = run_query_in_sandbox(project_id, sql_to_run)
         else:
             connection = db.query(Connection).filter(
                 Connection.project_id == project_id
@@ -103,7 +117,7 @@ def execute_sql(
                 )
             connector = get_connector(connection)
             try:
-                df = connector.run_query(request.sql)
+                df = connector.run_query(sql_to_run)
             finally:
                 if hasattr(connector, 'dispose'):
                     connector.dispose()
@@ -113,7 +127,7 @@ def execute_sql(
         explain_plan = None
         try:
             if environment == "warehouse":
-                plan_df = run_query_in_sandbox(project_id, f"EXPLAIN {request.sql}")
+                plan_df = run_query_in_sandbox(project_id, f"EXPLAIN {sql_to_run}")
                 if plan_df is not None and len(plan_df) > 0:
                     explain_plan = "\n".join(
                         " ".join(str(v) for v in row) for row in plan_df.itertuples(index=False)
@@ -125,7 +139,7 @@ def execute_sql(
                 if connection and connection.connection_type == ConnectionType.postgresql:
                     plan_connector = get_connector(connection)
                     try:
-                        plan_df = plan_connector.run_query(f"EXPLAIN {request.sql}")
+                        plan_df = plan_connector.run_query(f"EXPLAIN {sql_to_run}")
                         if plan_df is not None and len(plan_df) > 0:
                             explain_plan = "\n".join(
                                 str(row[0]) for row in plan_df.itertuples(index=False)
@@ -194,16 +208,27 @@ def explain_sql_query(
     """
     Sends SQL to Groq and returns plain English explanation.
     Used by the AI assistant panel in the SQL workspace.
+
+    Demo project: only a curated query_id may be explained; free-text sql
+    is ignored so nothing user-supplied reaches the LLM prompt.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+
+    if project.is_demo:
+        curated = get_curated_query(request.query_id) if request.query_id else None
+        if not curated:
+            raise HTTPException(
+                status_code=400,
+                detail="Only curated demo queries can be explained in the public demo."
+            )
+        sql_text = curated["sql"]
+    else:
+        if not request.sql:
+            raise HTTPException(status_code=400, detail="sql is required")
+        sql_text = request.sql
 
     schema_context = build_schema_context(project_id, db)
-    result = explain_sql(request.sql, schema_context)
+    result = explain_sql(sql_text, schema_context)
 
     return SQLExplainResponse(
         explanation=result["explanation"],
@@ -225,12 +250,8 @@ def optimize_sql_query(
     Sends SQL to Groq and returns performance/index suggestions.
     Used by the AI assistant panel's Optimize tab.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     schema_context = build_schema_context(project_id, db)
     result = optimize_sql(request.sql, schema_context)
@@ -253,12 +274,8 @@ def generate_sql_query(
     Translates a natural-language request into SQL using Groq.
     Used by the AI assistant panel's Generate tab.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     schema_context = build_schema_context(project_id, db)
     result = generate_sql_from_prompt(request.prompt, schema_context)
@@ -280,12 +297,8 @@ def save_query(
     Saves a named SQL query to the project.
     Saved queries appear in query history and can be reloaded.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     query = SavedQuery(
         project_id=project_id,
@@ -303,17 +316,12 @@ def save_query(
 def get_query_history(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Returns all saved queries for a project ordered by most recent.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     queries = db.query(SavedQuery).filter(
         SavedQuery.project_id == project_id
@@ -332,12 +340,8 @@ def delete_saved_query(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     query = db.query(SavedQuery).filter(
         SavedQuery.id == query_id,

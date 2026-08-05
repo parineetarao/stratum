@@ -35,6 +35,7 @@ import { stageRoute } from '@/lib/workspaceNav';
 import RelationshipGraph from './RelationshipGraph';
 import ReviewSidebar from './ReviewSidebar';
 import { buildRelationshipItems, type GraphRelationship } from './graphModel';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 type LoadState = 'loading' | 'no-source' | 'failed' | 'ready';
 
@@ -355,37 +356,43 @@ export default function RelationshipsExplorer() {
                   padding: 6,
                 }}
               >
-                <button
-                  type="button"
-                  disabled={!relationshipData || relationshipData.auto_accepted === 0}
-                  onClick={handleBulkAccept}
-                  style={{
-                    width: '100%',
-                    padding: '9px 10px',
-                    borderRadius: 7,
-                    background: 'transparent',
-                    border: 'none',
-                    color: !relationshipData || relationshipData.auto_accepted === 0 ? 'rgba(226,232,240,0.35)' : '#f4f4f5',
-                    fontSize: 12.5,
-                    cursor: !relationshipData || relationshipData.auto_accepted === 0 ? 'not-allowed' : 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  Bulk accept high-confidence{relationshipData && relationshipData.auto_accepted > 0 ? ` (${relationshipData.auto_accepted})` : ''}
-                </button>
+                <DisabledInDemo>
+                  <button
+                    type="button"
+                    disabled={!relationshipData || relationshipData.auto_accepted === 0}
+                    onClick={handleBulkAccept}
+                    style={{
+                      width: '100%',
+                      padding: '9px 10px',
+                      borderRadius: 7,
+                      background: 'transparent',
+                      border: 'none',
+                      color: !relationshipData || relationshipData.auto_accepted === 0 ? 'rgba(226,232,240,0.35)' : '#f4f4f5',
+                      fontSize: 12.5,
+                      cursor: !relationshipData || relationshipData.auto_accepted === 0 ? 'not-allowed' : 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    Bulk accept high-confidence{relationshipData && relationshipData.auto_accepted > 0 ? ` (${relationshipData.auto_accepted})` : ''}
+                  </button>
+                </DisabledInDemo>
               </div>
             )}
           </div>
 
-          <button type="button" onClick={handleRefreshGraph} disabled={isRefreshing} style={actionButtonStyle(isRefreshing)}>
-            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
-            Refresh Graph
-          </button>
+          <DisabledInDemo>
+            <button type="button" onClick={handleRefreshGraph} disabled={isRefreshing} style={actionButtonStyle(isRefreshing)}>
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
+              Refresh Graph
+            </button>
+          </DisabledInDemo>
 
-          <button type="button" onClick={handleDiscover} disabled={isDiscovering} style={actionButtonStyle(isDiscovering, true)}>
-            {isDiscovering ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
-            Discover Relationships
-          </button>
+          <DisabledInDemo>
+            <button type="button" onClick={handleDiscover} disabled={isDiscovering} style={actionButtonStyle(isDiscovering, true)}>
+              {isDiscovering ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
+              Discover Relationships
+            </button>
+          </DisabledInDemo>
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import ReactECharts from 'echarts-for-react';
 import { Check, ExternalLink, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import type { DashboardChart } from '@/lib/api';
 import { allowedChartTypesFor, buildChartOption, chartRenderIssue, CHART_TYPE_LABELS, PALETTE_PRESETS } from './chartOptions';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 export type ChartSize = 'small' | 'medium' | 'large';
 
@@ -163,102 +164,110 @@ export default function ChartTile({
               }}
             >
               <div style={{ position: 'relative' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTypeMenuOpen((v) => !v);
-                    setResizeMenuOpen(false);
-                  }}
-                  className="flex items-center justify-between"
-                  style={{ width: '100%', padding: '7px 9px', borderRadius: 6, border: 'none', background: 'transparent', color: '#f4f4f5', cursor: 'pointer', textAlign: 'left' }}
-                >
-                  Change Chart Type
-                </button>
+                <DisabledInDemo>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTypeMenuOpen((v) => !v);
+                      setResizeMenuOpen(false);
+                    }}
+                    className="flex items-center justify-between"
+                    style={{ width: '100%', padding: '7px 9px', borderRadius: 6, border: 'none', background: 'transparent', color: '#f4f4f5', cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    Change Chart Type
+                  </button>
+                </DisabledInDemo>
                 {typeMenuOpen && (
                   <div style={{ paddingLeft: 8 }}>
                     {allowedTypes.map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => {
-                          onChangeType(chart.widget_key, t);
-                          setMenuOpen(false);
-                          setTypeMenuOpen(false);
-                        }}
-                        className="flex items-center justify-between"
-                        style={{
-                          width: '100%',
-                          padding: '6px 9px',
-                          borderRadius: 6,
-                          border: 'none',
-                          background: 'transparent',
-                          color: t === chart.chart_type ? '#a78bfa' : 'rgba(226, 232, 240, 0.75)',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          fontSize: 12,
-                        }}
-                      >
-                        {CHART_TYPE_LABELS[t] || t}
-                        {t === chart.chart_type && <Check size={12} aria-hidden="true" />}
-                      </button>
+                      <DisabledInDemo key={t}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onChangeType(chart.widget_key, t);
+                            setMenuOpen(false);
+                            setTypeMenuOpen(false);
+                          }}
+                          className="flex items-center justify-between"
+                          style={{
+                            width: '100%',
+                            padding: '6px 9px',
+                            borderRadius: 6,
+                            border: 'none',
+                            background: 'transparent',
+                            color: t === chart.chart_type ? '#a78bfa' : 'rgba(226, 232, 240, 0.75)',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: 12,
+                          }}
+                        >
+                          {CHART_TYPE_LABELS[t] || t}
+                          {t === chart.chart_type && <Check size={12} aria-hidden="true" />}
+                        </button>
+                      </DisabledInDemo>
                     ))}
                   </div>
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditingTitle(true);
-                  setMenuOpen(false);
-                }}
-                className="flex items-center"
-                style={{ width: '100%', gap: 6, padding: '7px 9px', borderRadius: 6, border: 'none', background: 'transparent', color: '#f4f4f5', cursor: 'pointer', textAlign: 'left' }}
-              >
-                <Pencil size={12} aria-hidden="true" />
-                Edit Title
-              </button>
-
-              <div style={{ position: 'relative' }}>
+              <DisabledInDemo>
                 <button
                   type="button"
                   onClick={() => {
-                    setResizeMenuOpen((v) => !v);
-                    setTypeMenuOpen(false);
+                    setIsEditingTitle(true);
+                    setMenuOpen(false);
                   }}
-                  className="flex items-center justify-between"
-                  style={{ width: '100%', padding: '7px 9px', borderRadius: 6, border: 'none', background: 'transparent', color: '#f4f4f5', cursor: 'pointer', textAlign: 'left' }}
+                  className="flex items-center"
+                  style={{ width: '100%', gap: 6, padding: '7px 9px', borderRadius: 6, border: 'none', background: 'transparent', color: '#f4f4f5', cursor: 'pointer', textAlign: 'left' }}
                 >
-                  Resize
+                  <Pencil size={12} aria-hidden="true" />
+                  Edit Title
                 </button>
+              </DisabledInDemo>
+
+              <div style={{ position: 'relative' }}>
+                <DisabledInDemo>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResizeMenuOpen((v) => !v);
+                      setTypeMenuOpen(false);
+                    }}
+                    className="flex items-center justify-between"
+                    style={{ width: '100%', padding: '7px 9px', borderRadius: 6, border: 'none', background: 'transparent', color: '#f4f4f5', cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    Resize
+                  </button>
+                </DisabledInDemo>
                 {resizeMenuOpen && (
                   <div style={{ paddingLeft: 8 }}>
                     {(['small', 'medium', 'large'] as ChartSize[]).map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => {
-                          onResize(chart.widget_key, s);
-                          setMenuOpen(false);
-                          setResizeMenuOpen(false);
-                        }}
-                        className="flex items-center justify-between"
-                        style={{
-                          width: '100%',
-                          padding: '6px 9px',
-                          borderRadius: 6,
-                          border: 'none',
-                          background: 'transparent',
-                          color: s === size ? '#a78bfa' : 'rgba(226, 232, 240, 0.75)',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          fontSize: 12,
-                          textTransform: 'capitalize',
-                        }}
-                      >
-                        {s}
-                        {s === size && <Check size={12} aria-hidden="true" />}
-                      </button>
+                      <DisabledInDemo key={s}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onResize(chart.widget_key, s);
+                            setMenuOpen(false);
+                            setResizeMenuOpen(false);
+                          }}
+                          className="flex items-center justify-between"
+                          style={{
+                            width: '100%',
+                            padding: '6px 9px',
+                            borderRadius: 6,
+                            border: 'none',
+                            background: 'transparent',
+                            color: s === size ? '#a78bfa' : 'rgba(226, 232, 240, 0.75)',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: 12,
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {s}
+                          {s === size && <Check size={12} aria-hidden="true" />}
+                        </button>
+                      </DisabledInDemo>
                     ))}
                   </div>
                 )}
@@ -322,18 +331,20 @@ export default function ChartTile({
                 View SQL
               </Link>
 
-              <button
-                type="button"
-                onClick={() => {
-                  onRemove(chart.widget_key);
-                  setMenuOpen(false);
-                }}
-                className="flex items-center"
-                style={{ width: '100%', gap: 6, padding: '7px 9px', borderRadius: 6, border: 'none', background: 'transparent', color: '#f87171', cursor: 'pointer', textAlign: 'left' }}
-              >
-                <Trash2 size={12} aria-hidden="true" />
-                Remove from Dashboard
-              </button>
+              <DisabledInDemo>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onRemove(chart.widget_key);
+                    setMenuOpen(false);
+                  }}
+                  className="flex items-center"
+                  style={{ width: '100%', gap: 6, padding: '7px 9px', borderRadius: 6, border: 'none', background: 'transparent', color: '#f87171', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <Trash2 size={12} aria-hidden="true" />
+                  Remove from Dashboard
+                </button>
+              </DisabledInDemo>
             </div>
           )}
         </div>

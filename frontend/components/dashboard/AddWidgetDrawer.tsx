@@ -13,6 +13,7 @@ import {
   type SqlEnvironment,
 } from '@/lib/api';
 import { getCategoryBadgeStyle } from '@/components/workspace/kpis/KpiCard';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 interface AddWidgetDrawerProps {
   projectId: number;
@@ -180,27 +181,29 @@ export default function AddWidgetDrawer({ projectId, hiddenCharts, onAdd, onAddQ
                         {chart.category || 'General'}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onAdd(chart.widget_key)}
-                      className="flex items-center"
-                      style={{
-                        gap: 4,
-                        flexShrink: 0,
-                        height: 28,
-                        padding: '0 10px',
-                        borderRadius: 6,
-                        border: 'none',
-                        background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                        color: '#fff',
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Plus size={12} aria-hidden="true" />
-                      Add
-                    </button>
+                    <DisabledInDemo>
+                      <button
+                        type="button"
+                        onClick={() => onAdd(chart.widget_key)}
+                        className="flex items-center"
+                        style={{
+                          gap: 4,
+                          flexShrink: 0,
+                          height: 28,
+                          padding: '0 10px',
+                          borderRadius: 6,
+                          border: 'none',
+                          background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                          color: '#fff',
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Plus size={12} aria-hidden="true" />
+                        Add
+                      </button>
+                    </DisabledInDemo>
                   </div>
                 );
               })}
@@ -324,27 +327,29 @@ export default function AddWidgetDrawer({ projectId, hiddenCharts, onAdd, onAddQ
 
                             {createError && <p style={{ fontSize: 12, color: '#fca5a5' }}>{createError}</p>}
 
-                            <button
-                              type="button"
-                              onClick={handleCreateWidget}
-                              disabled={creating || !xColumn || !yColumn}
-                              className="flex items-center justify-center"
-                              style={{
-                                gap: 6,
-                                height: 30,
-                                borderRadius: 6,
-                                border: 'none',
-                                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                                color: '#fff',
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: creating ? 'not-allowed' : 'pointer',
-                                opacity: creating ? 0.7 : 1,
-                              }}
-                            >
-                              {creating ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Plus size={13} aria-hidden="true" />}
-                              Add to Dashboard
-                            </button>
+                            <DisabledInDemo>
+                              <button
+                                type="button"
+                                onClick={handleCreateWidget}
+                                disabled={creating || !xColumn || !yColumn}
+                                className="flex items-center justify-center"
+                                style={{
+                                  gap: 6,
+                                  height: 30,
+                                  borderRadius: 6,
+                                  border: 'none',
+                                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                                  color: '#fff',
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  cursor: creating ? 'not-allowed' : 'pointer',
+                                  opacity: creating ? 0.7 : 1,
+                                }}
+                              >
+                                {creating ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Plus size={13} aria-hidden="true" />}
+                                Add to Dashboard
+                              </button>
+                            </DisabledInDemo>
                           </div>
                         )}
                       </div>

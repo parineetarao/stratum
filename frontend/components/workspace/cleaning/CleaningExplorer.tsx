@@ -39,6 +39,12 @@ import CleaningStatsStrip from './CleaningStatsStrip';
 import RecommendationsList from './RecommendationsList';
 import SandboxPanel from './SandboxPanel';
 import ApplyConfirmModal from './ApplyConfirmModal';
+import DisabledInDemo from '@/components/workspace/demoGuard';
+
+const CLEANING_DEMO_COPY = {
+  title: 'Review cleaning operations',
+  body: 'Sign up and create your own project to review and apply cleaning operations.',
+};
 
 type LoadState = 'loading' | 'no-source' | 'empty' | 'failed' | 'ready';
 
@@ -322,43 +328,48 @@ export default function CleaningExplorer() {
                 { action: 'reject_low_confidence' as const, label: 'Reject All Low Confidence' },
                 { action: 'reset_all' as const, label: 'Reset All to Pending' },
               ].map((item) => (
-                <button
-                  key={item.action}
-                  type="button"
-                  onClick={() => handleBulkAction(item.action)}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '10px 14px',
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#f4f4f5',
-                    fontSize: 12.5,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {item.label}
-                </button>
+                <DisabledInDemo key={item.action} {...CLEANING_DEMO_COPY}>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkAction(item.action)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '10px 14px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#f4f4f5',
+                      fontSize: 12.5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                </DisabledInDemo>
               ))}
             </div>
           )}
         </div>
 
-        <button type="button" onClick={handlePreview} disabled={!canPreview || isPreviewing} style={actionButtonStyle(!canPreview || isPreviewing, true)}>
-          {isPreviewing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
-          Preview in Sandbox
-        </button>
+        <DisabledInDemo {...CLEANING_DEMO_COPY}>
+          <button type="button" onClick={handlePreview} disabled={!canPreview || isPreviewing} style={actionButtonStyle(!canPreview || isPreviewing, true)}>
+            {isPreviewing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+            Preview in Sandbox
+          </button>
+        </DisabledInDemo>
 
-        <button
-          type="button"
-          onClick={() => setShowApplyModal(true)}
-          disabled={!canApply}
-          title={!hasPreviewed ? 'Preview changes in sandbox first' : undefined}
-          style={actionButtonStyle(!canApply)}
-        >
-          Apply Approved to Source
-        </button>
+        <DisabledInDemo {...CLEANING_DEMO_COPY}>
+          <button
+            type="button"
+            onClick={() => setShowApplyModal(true)}
+            disabled={!canApply}
+            title={!hasPreviewed ? 'Preview changes in sandbox first' : undefined}
+            style={actionButtonStyle(!canApply)}
+          >
+            Apply Approved to Source
+          </button>
+        </DisabledInDemo>
       </div>
     </div>
   );
@@ -383,10 +394,12 @@ export default function CleaningExplorer() {
         {actionMessage.text}
       </div>
       {actionMessage.showReprofile && (
-        <button type="button" onClick={handleReprofile} disabled={isReprofiling} style={actionButtonStyle(isReprofiling)}>
-          {isReprofiling ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={13} aria-hidden="true" />}
-          Re-run Profiling
-        </button>
+        <DisabledInDemo {...CLEANING_DEMO_COPY}>
+          <button type="button" onClick={handleReprofile} disabled={isReprofiling} style={actionButtonStyle(isReprofiling)}>
+            {isReprofiling ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={13} aria-hidden="true" />}
+            Re-run Profiling
+          </button>
+        </DisabledInDemo>
       )}
     </div>
   );
@@ -462,10 +475,12 @@ export default function CleaningExplorer() {
           <p style={{ fontSize: 14, lineHeight: 1.5, color: 'rgba(226, 232, 240, 0.62)', maxWidth: 380, marginBottom: 24 }}>
             Run profiling and generate a quality report to produce cleaning recommendations for this dataset.
           </p>
-          <button type="button" onClick={handleGenerateRecommendations} disabled={isReprofiling} style={actionButtonStyle(isReprofiling, true)}>
-            {isReprofiling ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={14} aria-hidden="true" />}
-            Generate Recommendations
-          </button>
+          <DisabledInDemo {...CLEANING_DEMO_COPY}>
+            <button type="button" onClick={handleGenerateRecommendations} disabled={isReprofiling} style={actionButtonStyle(isReprofiling, true)}>
+              {isReprofiling ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={14} aria-hidden="true" />}
+              Generate Recommendations
+            </button>
+          </DisabledInDemo>
         </div>
       </div>
     );

@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { KPIItem } from '@/lib/api';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 interface KpiCardProps {
   kpi: KPIItem;
@@ -418,86 +419,94 @@ export default function KpiCard({
                 <Check size={13} aria-hidden="true" />
                 Approved
               </button>
-              <button
-                type="button"
-                onClick={handleUnapproveClick}
-                disabled={isUpdating}
-                style={{
-                  height: 30,
-                  padding: '0 10px',
-                  borderRadius: 6,
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  background: 'rgba(148, 163, 184, 0.06)',
-                  color: 'rgba(226, 232, 240, 0.7)',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: isUpdating ? 'not-allowed' : 'pointer',
-                }}
-              >
-                Remove
-              </button>
+              <DisabledInDemo>
+                <button
+                  type="button"
+                  onClick={handleUnapproveClick}
+                  disabled={isUpdating}
+                  style={{
+                    height: 30,
+                    padding: '0 10px',
+                    borderRadius: 6,
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    background: 'rgba(148, 163, 184, 0.06)',
+                    color: 'rgba(226, 232, 240, 0.7)',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: isUpdating ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Remove
+                </button>
+              </DisabledInDemo>
             </>
           ) : isSkipped ? (
-            <button
-              type="button"
-              onClick={handleRestoreClick}
-              disabled={isUpdating}
-              style={{
-                height: 30,
-                padding: '0 12px',
-                borderRadius: 6,
-                border: '1px solid rgba(148, 163, 184, 0.24)',
-                background: 'rgba(148, 163, 184, 0.08)',
-                color: '#f4f4f5',
-                fontSize: 12,
-                fontWeight: 500,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                cursor: isUpdating ? 'not-allowed' : 'pointer',
-              }}
-            >
-              <RotateCcw size={12} aria-hidden="true" />
-              Restore
-            </button>
-          ) : (
-            <>
+            <DisabledInDemo>
               <button
                 type="button"
-                onClick={handleApproveClick}
+                onClick={handleRestoreClick}
                 disabled={isUpdating}
                 style={{
                   height: 30,
                   padding: '0 12px',
                   borderRadius: 6,
-                  border: 'none',
-                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                  color: '#fff',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: isUpdating ? 'not-allowed' : 'pointer',
-                }}
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                onClick={handleSkipClick}
-                disabled={isUpdating}
-                style={{
-                  height: 30,
-                  padding: '0 10px',
-                  borderRadius: 6,
-                  border: '1px solid rgba(148, 163, 184, 0.2)',
-                  background: 'rgba(148, 163, 184, 0.06)',
-                  color: 'rgba(226, 232, 240, 0.7)',
+                  border: '1px solid rgba(148, 163, 184, 0.24)',
+                  background: 'rgba(148, 163, 184, 0.08)',
+                  color: '#f4f4f5',
                   fontSize: 12,
                   fontWeight: 500,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
                   cursor: isUpdating ? 'not-allowed' : 'pointer',
                 }}
               >
-                Skip
+                <RotateCcw size={12} aria-hidden="true" />
+                Restore
               </button>
+            </DisabledInDemo>
+          ) : (
+            <>
+              <DisabledInDemo>
+                <button
+                  type="button"
+                  onClick={handleApproveClick}
+                  disabled={isUpdating}
+                  style={{
+                    height: 30,
+                    padding: '0 12px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: isUpdating ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Approve
+                </button>
+              </DisabledInDemo>
+              <DisabledInDemo>
+                <button
+                  type="button"
+                  onClick={handleSkipClick}
+                  disabled={isUpdating}
+                  style={{
+                    height: 30,
+                    padding: '0 10px',
+                    borderRadius: 6,
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    background: 'rgba(148, 163, 184, 0.06)',
+                    color: 'rgba(226, 232, 240, 0.7)',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: isUpdating ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Skip
+                </button>
+              </DisabledInDemo>
             </>
           )}
         </div>

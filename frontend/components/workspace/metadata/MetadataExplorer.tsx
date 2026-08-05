@@ -21,6 +21,7 @@ import CatalogStatsStrip from './CatalogStatsStrip';
 import SchemaPanel from './SchemaPanel';
 import TableListPanel from './TableListPanel';
 import TableDetailPanel from './TableDetailPanel';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 type LoadState = 'loading' | 'empty' | 'failed' | 'ready';
 type DetailLoadState = 'loading' | 'ready' | 'failed';
@@ -272,19 +273,21 @@ export default function MetadataExplorer() {
         <p style={{ fontSize: 14, lineHeight: 1.5, color: 'rgba(226, 232, 240, 0.62)', maxWidth: 380, marginBottom: 24 }}>
           Connect a data source and run discovery to explore its schemas, tables, and columns here.
         </p>
-        <button
-          type="button"
-          onClick={handleRefreshMetadata}
-          disabled={isRefreshing}
-          style={actionButtonStyle(isRefreshing, true)}
-        >
-          {isRefreshing ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <RefreshCw size={14} aria-hidden="true" />
-          )}
-          Run Discovery
-        </button>
+        <DisabledInDemo>
+          <button
+            type="button"
+            onClick={handleRefreshMetadata}
+            disabled={isRefreshing}
+            style={actionButtonStyle(isRefreshing, true)}
+          >
+            {isRefreshing ? (
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <RefreshCw size={14} aria-hidden="true" />
+            )}
+            Run Discovery
+          </button>
+        </DisabledInDemo>
       </div>
     );
   }
@@ -310,15 +313,17 @@ export default function MetadataExplorer() {
         </div>
 
         <div className="flex items-center" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={handleRefreshMetadata}
-            disabled={isRefreshing}
-            style={actionButtonStyle(isRefreshing)}
-          >
-            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
-            Refresh Metadata
-          </button>
+          <DisabledInDemo>
+            <button
+              type="button"
+              onClick={handleRefreshMetadata}
+              disabled={isRefreshing}
+              style={actionButtonStyle(isRefreshing)}
+            >
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
+              Refresh Metadata
+            </button>
+          </DisabledInDemo>
           <button
             type="button"
             onClick={handleExportMetadata}

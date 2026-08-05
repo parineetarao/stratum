@@ -17,7 +17,8 @@ from app.schemas.cleaning import (
     CleaningApplyResponse,
     CleaningApplyResult,
 )
-from app.api.deps import get_current_user
+from typing import Optional
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.connectors.postgres_connector import PostgresConnector
 from app.engine.sandbox_engine import (
     run_query_in_sandbox,
@@ -28,13 +29,13 @@ from app.engine.cleaning_executor import run_cleaning_preview
 router = APIRouter(prefix="/projects", tags=["Cleaning"])
 
 
-def _get_project(project_id: int, db: Session, current_user: User) -> Project:
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+def _get_project(project_id: int, db: Session, current_user: Optional[User]) -> Project:
+    return get_project_for_access(project_id, db, current_user.id if current_user else None)
+
+
+def _get_mutable_project(project_id: int, db: Session, current_user: User) -> Project:
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
     return project
 
 
@@ -54,7 +55,7 @@ def _list_response(project_id: int, recs) -> CleaningListResponse:
 def get_cleaning_recommendations(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     _get_project(project_id, db, current_user)
 
@@ -82,7 +83,7 @@ def decide_cleaning_recommendation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    _get_project(project_id, db, current_user)
+    _get_mutable_project(project_id, db, current_user)
 
     rec = db.query(CleaningRecommendation).filter(
         CleaningRecommendation.id == rec_id,
@@ -110,7 +111,7 @@ def bulk_decide_cleaning_recommendations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    _get_project(project_id, db, current_user)
+    _get_mutable_project(project_id, db, current_user)
 
     recs = db.query(CleaningRecommendation).filter(
         CleaningRecommendation.project_id == project_id
@@ -147,7 +148,7 @@ def preview_cleaning(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    _get_project(project_id, db, current_user)
+    _get_mutable_project(project_id, db, current_user)
 
     if not sandbox_exists(project_id):
         raise HTTPException(
@@ -194,7 +195,7 @@ def apply_cleaning_recommendations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    _get_project(project_id, db, current_user)
+    _get_mutable_project(project_id, db, current_user)
 
     connection = db.query(Connection).filter(
         Connection.project_id == project_id

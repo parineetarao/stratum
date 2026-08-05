@@ -12,7 +12,8 @@ from app.models.cleaning import CleaningRecommendation
 from app.schemas.quality import (
     QualityReportResponse, QualityIssue, TableQualityScore, IssueImpactSummary
 )
-from app.api.deps import get_current_user
+from typing import Optional
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.engine.quality_scorer import score_profile
 from app.engine.cleaning_engine import generate_cleaning_recommendations
 
@@ -56,12 +57,8 @@ def generate_quality_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     run = db.query(ProfilingRun).filter(
         ProfilingRun.project_id == project_id
@@ -119,14 +116,9 @@ def generate_quality_report(
 def get_quality_report(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     run = db.query(ProfilingRun).filter(
         ProfilingRun.project_id == project_id
@@ -159,14 +151,9 @@ def get_quality_report(
 def export_quality_report(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     run = db.query(ProfilingRun).filter(
         ProfilingRun.project_id == project_id

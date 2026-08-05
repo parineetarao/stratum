@@ -37,6 +37,7 @@ import DataSourceStatsStrip from '@/components/workspace/data-source/DataSourceS
 import ActivityList from '@/components/workspace/data-source/ActivityList';
 import EditConnectionDialog from '@/components/workspace/data-source/EditConnectionDialog';
 import ReplaceCsvDialog from '@/components/workspace/data-source/ReplaceCsvDialog';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 type LoadState = 'loading' | 'empty' | 'failed' | 'ready';
 type Tab = 'overview' | 'activity';
@@ -314,29 +315,33 @@ export default function DataSourcePage() {
 
         <div className="flex items-center" style={{ gap: 8, flexWrap: 'wrap' }}>
           {!isCsv && (
+            <DisabledInDemo>
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                style={actionButtonStyle(isTesting)}
+              >
+                {isTesting ? (
+                  <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <CheckCircle2 size={14} aria-hidden="true" />
+                )}
+                Test Connection
+              </button>
+            </DisabledInDemo>
+          )}
+          <DisabledInDemo>
             <button
               type="button"
-              onClick={handleTestConnection}
-              disabled={isTesting}
-              style={actionButtonStyle(isTesting)}
+              onClick={handleRefreshSource}
+              disabled={isRefreshing}
+              style={actionButtonStyle(isRefreshing)}
             >
-              {isTesting ? (
-                <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-              ) : (
-                <CheckCircle2 size={14} aria-hidden="true" />
-              )}
-              Test Connection
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
+              {isCsv ? 'Reprocess Dataset' : 'Refresh Source'}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={handleRefreshSource}
-            disabled={isRefreshing}
-            style={actionButtonStyle(isRefreshing)}
-          >
-            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
-            {isCsv ? 'Reprocess Dataset' : 'Refresh Source'}
-          </button>
+          </DisabledInDemo>
           {isCsv ? (
             <button type="button" onClick={() => setIsReplaceOpen(true)} style={actionButtonStyle(false, true)}>
               <UploadCloud size={14} aria-hidden="true" />

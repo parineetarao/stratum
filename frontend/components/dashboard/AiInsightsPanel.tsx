@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { AlertTriangle, ArrowRight, Download, Loader2, Sparkles, TrendingUp, TrendingDown } from 'lucide-react';
 import type { InsightsResponse, InsightSentiment } from '@/lib/api';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 interface AiInsightsPanelProps {
   insights: InsightsResponse | null;
@@ -42,28 +43,30 @@ export default function AiInsightsPanel({ insights, isLoading, error, onGenerate
           <h2 style={{ fontSize: 15, fontWeight: 650, color: '#f5f5f7' }}>AI Insights</h2>
         </div>
         <div className="flex items-center" style={{ gap: 8 }}>
-          <button
-            type="button"
-            onClick={onGenerate}
-            disabled={isLoading}
-            className="flex items-center"
-            style={{
-              gap: 6,
-              height: 32,
-              padding: '0 12px',
-              borderRadius: 7,
-              border: 'none',
-              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-              color: '#fff',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: isLoading ? 'not-allowed' : 'pointer',
-              opacity: isLoading ? 0.7 : 1,
-            }}
-          >
-            {isLoading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Sparkles size={13} aria-hidden="true" />}
-            Generate New Insights
-          </button>
+          <DisabledInDemo>
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={isLoading}
+              className="flex items-center"
+              style={{
+                gap: 6,
+                height: 32,
+                padding: '0 12px',
+                borderRadius: 7,
+                border: 'none',
+                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                color: '#fff',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                opacity: isLoading ? 0.7 : 1,
+              }}
+            >
+              {isLoading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Sparkles size={13} aria-hidden="true" />}
+              Generate New Insights
+            </button>
+          </DisabledInDemo>
           <button
             type="button"
             onClick={onExport}

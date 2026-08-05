@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = str(BACKEND_DIR / "uploads")
     SANDBOX_DIR: str = str(BACKEND_DIR / "sandboxes")
     AUTO_CREATE_TABLES: bool = False
+    SEED_DEMO_PROJECT: bool = False
+    DEMO_DATABASE_URL: str = ""
 
     class Config:
         env_file = ".env"

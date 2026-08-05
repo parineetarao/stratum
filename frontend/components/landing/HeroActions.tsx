@@ -1,15 +1,15 @@
 import Link from 'next/link';
 
 interface HeroActionsProps {
-  getStartedHref?: string;
   exploreHref?: string;
+  loginHref?: string;
 }
 
-export default function HeroActions({ getStartedHref = '/login', exploreHref = '#' }: HeroActionsProps) {
+export default function HeroActions({ exploreHref = '/demo', loginHref = '/login' }: HeroActionsProps) {
   return (
     <div className="flex flex-wrap items-center justify-center" style={{ marginTop: 34, gap: 14 }}>
       <Link
-        href={getStartedHref}
+        href={exploreHref}
         className="no-underline transition-transform duration-150"
         style={{
           padding: '14px 20px',
@@ -20,10 +20,10 @@ export default function HeroActions({ getStartedHref = '/login', exploreHref = '
           fontWeight: 600,
         }}
       >
-        Get Started Free
+        Explore Demo
       </Link>
       <Link
-        href={exploreHref}
+        href={loginHref}
         className="no-underline transition-colors duration-150"
         style={{
           padding: '14px 20px',
@@ -35,7 +35,7 @@ export default function HeroActions({ getStartedHref = '/login', exploreHref = '
           background: 'rgba(255,255,255,0.03)',
         }}
       >
-        Explore the Platform
+        Log In
       </Link>
     </div>
   );

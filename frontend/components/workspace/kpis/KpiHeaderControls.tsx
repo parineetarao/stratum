@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Users,
 } from 'lucide-react';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 export type KpiCategoryFilter =
   | 'All'
@@ -233,64 +234,68 @@ export default function KpiHeaderControls({
 
       {/* Right: Actions */}
       <div className="flex items-center" style={{ gap: 8 }}>
-        <button
-          type="button"
-          onClick={onRegenerate}
-          disabled={isRegenerating}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            height: 34,
-            padding: '0 13px',
-            borderRadius: 8,
-            border: '1px solid rgba(148, 163, 184, 0.24)',
-            background: 'rgba(148, 163, 184, 0.06)',
-            color: '#f4f4f5',
-            fontSize: 12.5,
-            fontWeight: 500,
-            cursor: isRegenerating ? 'not-allowed' : 'pointer',
-            opacity: isRegenerating ? 0.6 : 1,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {isRegenerating ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <RotateCw size={14} aria-hidden="true" />
-          )}
-          Regenerate KPIs
-        </button>
+        <DisabledInDemo>
+          <button
+            type="button"
+            onClick={onRegenerate}
+            disabled={isRegenerating}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              height: 34,
+              padding: '0 13px',
+              borderRadius: 8,
+              border: '1px solid rgba(148, 163, 184, 0.24)',
+              background: 'rgba(148, 163, 184, 0.06)',
+              color: '#f4f4f5',
+              fontSize: 12.5,
+              fontWeight: 500,
+              cursor: isRegenerating ? 'not-allowed' : 'pointer',
+              opacity: isRegenerating ? 0.6 : 1,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isRegenerating ? (
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <RotateCw size={14} aria-hidden="true" />
+            )}
+            Regenerate KPIs
+          </button>
+        </DisabledInDemo>
 
-        <button
-          type="button"
-          onClick={onBulkApproveHighConfidence}
-          disabled={isBulkApproving}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            height: 34,
-            padding: '0 14px',
-            borderRadius: 8,
-            border: 'none',
-            background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
-            color: '#ffffff',
-            fontSize: 12.5,
-            fontWeight: 600,
-            cursor: isBulkApproving ? 'not-allowed' : 'pointer',
-            opacity: isBulkApproving ? 0.6 : 1,
-            whiteSpace: 'nowrap',
-            boxShadow: '0 2px 10px rgba(111, 53, 244, 0.25)',
-          }}
-        >
-          {isBulkApproving ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <CheckCircle2 size={14} aria-hidden="true" />
-          )}
-          Approve All High Confidence
-        </button>
+        <DisabledInDemo>
+          <button
+            type="button"
+            onClick={onBulkApproveHighConfidence}
+            disabled={isBulkApproving}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              height: 34,
+              padding: '0 14px',
+              borderRadius: 8,
+              border: 'none',
+              background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
+              color: '#ffffff',
+              fontSize: 12.5,
+              fontWeight: 600,
+              cursor: isBulkApproving ? 'not-allowed' : 'pointer',
+              opacity: isBulkApproving ? 0.6 : 1,
+              whiteSpace: 'nowrap',
+              boxShadow: '0 2px 10px rgba(111, 53, 244, 0.25)',
+            }}
+          >
+            {isBulkApproving ? (
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <CheckCircle2 size={14} aria-hidden="true" />
+            )}
+            Approve All High Confidence
+          </button>
+        </DisabledInDemo>
       </div>
     </div>
   );

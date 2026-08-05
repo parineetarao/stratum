@@ -1,6 +1,7 @@
 'use client';
 
 import { RefreshCw, Save, Share2, Loader2, Check } from 'lucide-react';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 interface DashboardHeaderProps {
   projectName: string;
@@ -67,28 +68,30 @@ export default function DashboardHeader({
       </div>
 
       <div className="flex items-center" style={{ gap: 10, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={isSaving}
-          className="flex items-center"
-          style={{
-            gap: 7,
-            height: 38,
-            padding: '0 16px',
-            borderRadius: 8,
-            border: 'none',
-            background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: isSaving ? 'not-allowed' : 'pointer',
-            opacity: isSaving ? 0.7 : 1,
-          }}
-        >
-          {isSaving ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
-          {isSaving ? 'Saving...' : 'Save Dashboard'}
-        </button>
+        <DisabledInDemo>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={isSaving}
+            className="flex items-center"
+            style={{
+              gap: 7,
+              height: 38,
+              padding: '0 16px',
+              borderRadius: 8,
+              border: 'none',
+              background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: isSaving ? 'not-allowed' : 'pointer',
+              opacity: isSaving ? 0.7 : 1,
+            }}
+          >
+            {isSaving ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
+            {isSaving ? 'Saving...' : 'Save Dashboard'}
+          </button>
+        </DisabledInDemo>
 
         {!isSaving && lastSavedAt && (
           <span
@@ -123,31 +126,33 @@ export default function DashboardHeader({
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className="flex items-center"
-          style={{
-            gap: 7,
-            height: 38,
-            padding: '0 16px',
-            borderRadius: 8,
-            border: '1px solid rgba(148, 163, 184, 0.24)',
-            background: 'rgba(148, 163, 184, 0.06)',
-            color: '#f4f4f5',
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: isRefreshing ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {isRefreshing ? (
-            <Loader2 size={15} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <RefreshCw size={14} aria-hidden="true" />
-          )}
-          Refresh Data
-        </button>
+        <DisabledInDemo>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="flex items-center"
+            style={{
+              gap: 7,
+              height: 38,
+              padding: '0 16px',
+              borderRadius: 8,
+              border: '1px solid rgba(148, 163, 184, 0.24)',
+              background: 'rgba(148, 163, 184, 0.06)',
+              color: '#f4f4f5',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: isRefreshing ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {isRefreshing ? (
+              <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <RefreshCw size={14} aria-hidden="true" />
+            )}
+            Refresh Data
+          </button>
+        </DisabledInDemo>
 
         <span
           style={{

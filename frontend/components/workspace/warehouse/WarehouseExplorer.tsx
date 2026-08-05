@@ -29,6 +29,7 @@ import ClassificationPanel from './ClassificationPanel';
 import WarehouseGraph from './WarehouseGraph';
 import DdlTab from './DdlTab';
 import SandboxTab from './SandboxTab';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 type LoadState = 'loading' | 'no-metadata' | 'no-design' | 'failed' | 'ready';
 type RightTab = 'ddl' | 'sandbox';
@@ -277,10 +278,12 @@ export default function WarehouseExplorer() {
             {actionMessage.text}
           </div>
         )}
-        <button type="button" onClick={handleGenerate} disabled={isGenerating} style={actionButtonStyle(isGenerating, true)}>
-          {isGenerating ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
-          Generate Warehouse
-        </button>
+        <DisabledInDemo>
+          <button type="button" onClick={handleGenerate} disabled={isGenerating} style={actionButtonStyle(isGenerating, true)}>
+            {isGenerating ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
+            Generate Warehouse
+          </button>
+        </DisabledInDemo>
       </div>
     );
   }
@@ -320,10 +323,12 @@ export default function WarehouseExplorer() {
           </span>
 
           {isPostgres && (
-            <button type="button" onClick={handleApprove} disabled={isApproving} style={actionButtonStyle(isApproving, true)}>
-              {isApproving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
-              {design.is_approved ? 'Revoke Approval' : 'Apply Approved to Source'}
-            </button>
+            <DisabledInDemo>
+              <button type="button" onClick={handleApprove} disabled={isApproving} style={actionButtonStyle(isApproving, true)}>
+                {isApproving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
+                {design.is_approved ? 'Revoke Approval' : 'Apply Approved to Source'}
+              </button>
+            </DisabledInDemo>
           )}
         </div>
       </div>

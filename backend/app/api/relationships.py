@@ -9,7 +9,8 @@ from app.models.schema_metadata import DiscoveredTable, DiscoveredColumn
 from app.schemas.relationship import (
     RelationshipResponse, RelationshipDecision, RelationshipListResponse
 )
-from app.api.deps import get_current_user
+from typing import Optional
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector
 from app.engine.relationship_inference import infer_relationships
@@ -31,12 +32,8 @@ def run_relationship_inference(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     connection = db.query(Connection).filter(
         Connection.project_id == project_id
@@ -148,12 +145,8 @@ def decide_relationship(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     relationship = db.query(InferredRelationship).filter(
         InferredRelationship.id == relationship_id,
@@ -171,14 +164,9 @@ def decide_relationship(
 def get_relationships(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     relationships = db.query(InferredRelationship).filter(
         InferredRelationship.project_id == project_id
@@ -204,12 +192,8 @@ def bulk_accept_high_confidence(
     Accepts all pre-selected high confidence relationships in one action.
     User triggered — not automatic. Preserves human-in-the-loop principle.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     relationships = db.query(InferredRelationship).filter(
         InferredRelationship.project_id == project_id,

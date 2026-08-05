@@ -6,21 +6,16 @@ from app.models.project import Project
 from app.models.kpi import KPI
 from app.models.insight_report import InsightReport
 from app.schemas.insights import InsightsResponse, InsightFinding
-from app.api.deps import get_current_user
+from typing import Optional
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.ai.insight_generator import generate_insights
 from app.engine.chart_selector import format_value
 
 router = APIRouter(prefix="/projects", tags=["Insights"])
 
 
-def _get_owned_project(db: Session, project_id: int, user: User) -> Project:
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
+def _get_owned_project(db: Session, project_id: int, user: Optional[User]) -> Project:
+    return get_project_for_access(project_id, db, user.id if user else None)
 
 
 def _report_to_response(report: InsightReport) -> InsightsResponse:
@@ -58,6 +53,7 @@ def generate_executive_insights(
     standalone Insights page.
     """
     project = _get_owned_project(db, project_id, current_user)
+    ensure_project_is_mutable(project)
 
     approved_kpis = db.query(KPI).filter(
         KPI.project_id == project_id,
@@ -108,7 +104,7 @@ def generate_executive_insights(
 def get_latest_insights(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Returns the most recently generated, persisted insight report for

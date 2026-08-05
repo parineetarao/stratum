@@ -4,8 +4,9 @@ from datetime import datetime
 
 
 class SQLExecuteRequest(BaseModel):
-    sql: str
+    sql: Optional[str] = None
     environment: str = "source"
+    query_id: Optional[str] = None
 
 
 class SQLExecuteResponse(BaseModel):
@@ -20,8 +21,9 @@ class SQLExecuteResponse(BaseModel):
 
 
 class SQLExplainRequest(BaseModel):
-    sql: str
+    sql: Optional[str] = None
     environment: str = "source"
+    query_id: Optional[str] = None
 
 
 class SQLExplainResponse(BaseModel):

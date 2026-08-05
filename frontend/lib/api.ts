@@ -114,6 +114,7 @@ export interface Project {
   analysis_mode: string | null;
   created_at: string;
   updated_at: string | null;
+  is_demo?: boolean;
 }
 
 export interface CreateProjectPayload {
@@ -409,6 +410,7 @@ export interface TablesOverview {
 
 export interface ProjectOverview {
   project: Project;
+  is_demo?: boolean;
   status: ProjectStatus;
   status_label: string;
   source: SourceSummary;
@@ -424,6 +426,30 @@ export interface ProjectOverview {
 
 export async function getProjectOverview(projectId: number): Promise<ProjectOverview> {
   const { data } = await apiClient.get<ProjectOverview>(`/projects/${projectId}/overview`);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Public demo (no auth required)
+// ---------------------------------------------------------------------------
+
+export interface DemoProjectResponse {
+  project_id: number;
+}
+
+export async function getDemoProject(): Promise<DemoProjectResponse> {
+  const { data } = await apiClient.get<DemoProjectResponse>('/demo/project');
+  return data;
+}
+
+export interface DemoQuery {
+  id: string;
+  title: string;
+  sql: string;
+}
+
+export async function getDemoQueries(): Promise<DemoQuery[]> {
+  const { data } = await apiClient.get<DemoQuery[]>('/demo/queries');
   return data;
 }
 
@@ -824,11 +850,26 @@ export async function executeSql(
   projectId: number,
   sql: string,
   environment: SqlEnvironment = 'source',
+  signal?: AbortSignal,
+  queryId?: string
+): Promise<SQLExecuteResponse> {
+  const { data } = await apiClient.post<SQLExecuteResponse>(
+    `/projects/${projectId}/sql/execute`,
+    { sql, environment, query_id: queryId ?? null },
+    { signal }
+  );
+  return data;
+}
+
+export async function executeCuratedDemoQuery(
+  projectId: number,
+  queryId: string,
+  environment: SqlEnvironment = 'source',
   signal?: AbortSignal
 ): Promise<SQLExecuteResponse> {
   const { data } = await apiClient.post<SQLExecuteResponse>(
     `/projects/${projectId}/sql/execute`,
-    { sql, environment },
+    { environment, query_id: queryId },
     { signal }
   );
   return data;
@@ -845,11 +886,13 @@ export interface SQLExplainResponse {
 export async function explainSql(
   projectId: number,
   sql: string,
-  environment: SqlEnvironment = 'source'
+  environment: SqlEnvironment = 'source',
+  queryId?: string
 ): Promise<SQLExplainResponse> {
   const { data } = await apiClient.post<SQLExplainResponse>(`/projects/${projectId}/sql/explain`, {
     sql,
     environment,
+    query_id: queryId ?? null,
   });
   return data;
 }

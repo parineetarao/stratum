@@ -29,6 +29,7 @@ import QualityDimensionsPanel from './QualityDimensionsPanel';
 import CriticalIssuesPanel from './CriticalIssuesPanel';
 import TableHealthPanel from './TableHealthPanel';
 import RecommendedNextStepCard from './RecommendedNextStepCard';
+import DisabledInDemo from '@/components/workspace/demoGuard';
 
 type LoadState = 'loading' | 'no-source' | 'empty' | 'failed' | 'ready';
 
@@ -168,14 +169,18 @@ export default function DataQualityExplorer() {
       </div>
 
       <div className="flex items-center" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" onClick={handleRefreshQuality} disabled={isRefreshing} style={actionButtonStyle(isRefreshing)}>
-          <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
-          Refresh Quality
-        </button>
-        <button type="button" onClick={handleRunProfiling} disabled={isProfiling} style={actionButtonStyle(isProfiling, true)}>
-          {isProfiling ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
-          Run Profiling
-        </button>
+        <DisabledInDemo>
+          <button type="button" onClick={handleRefreshQuality} disabled={isRefreshing} style={actionButtonStyle(isRefreshing)}>
+            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
+            Refresh Quality
+          </button>
+        </DisabledInDemo>
+        <DisabledInDemo>
+          <button type="button" onClick={handleRunProfiling} disabled={isProfiling} style={actionButtonStyle(isProfiling, true)}>
+            {isProfiling ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+            Run Profiling
+          </button>
+        </DisabledInDemo>
         <button
           type="button"
           onClick={handleExportReport}
@@ -315,10 +320,12 @@ export default function DataQualityExplorer() {
           <p style={{ fontSize: 14, lineHeight: 1.5, color: 'rgba(226, 232, 240, 0.62)', maxWidth: 380, marginBottom: 24 }}>
             Run profiling to assess completeness, consistency, and uniqueness across your dataset.
           </p>
-          <button type="button" onClick={handleRunProfiling} disabled={isProfiling} style={actionButtonStyle(isProfiling, true)}>
-            {isProfiling ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
-            Run Profiling
-          </button>
+          <DisabledInDemo>
+            <button type="button" onClick={handleRunProfiling} disabled={isProfiling} style={actionButtonStyle(isProfiling, true)}>
+              {isProfiling ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+              Run Profiling
+            </button>
+          </DisabledInDemo>
         </div>
       </div>
     );
