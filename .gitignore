@@ -14,3 +14,8 @@ stratum.db
 frontend/tsconfig.tsbuildinfofrontend/tsconfig.tsbuildinfo
 backend/backend_dev.log
 frontend/frontend_dev.log
+backend/sandboxes/
+backend/backend_dev_run.log
+backend/backend_run.log
+frontend/frontend_run.log
+frontend/tsconfig.tsbuildinfo
