@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -28,6 +29,18 @@ from typing import List, Dict
 import os
 
 router = APIRouter(prefix="/projects", tags=["Metadata"])
+logger = logging.getLogger("stratum.metadata")
+
+
+def _connection_source_type(connection: Connection) -> str:
+    return getattr(connection.connection_type, "value", str(connection.connection_type))
+
+
+def _connection_target_description(connection: Connection) -> str:
+    """Non-secret description of what the connector points at, safe to log."""
+    if connection.connection_type in (ConnectionType.csv, ConnectionType.excel):
+        return f"file_path={connection.file_path}"
+    return f"source_schema={connection.source_schema or 'public'}"
 
 
 def get_connector(connection: Connection):
@@ -89,59 +102,77 @@ def discover_metadata(
     try:
         schema = discover_schema(connector)
     except Exception as e:
+        logger.exception(
+            "Metadata discovery failed: project_id=%s source_type=%s %s",
+            project_id,
+            _connection_source_type(connection),
+            _connection_target_description(connection),
+        )
         raise HTTPException(
-            status_code=500, detail=f"Discovery failed: {str(e)}"
+            status_code=500, detail=f"Metadata discovery failed: {str(e)}"
         )
     finally:
         if hasattr(connector, 'dispose'):
             connector.dispose()
 
-    tables_to_delete = db.query(DiscoveredTable).filter(
-        DiscoveredTable.project_id == project_id
-    ).all()
-    for table in tables_to_delete:
-        db.query(DiscoveredColumn).filter(
-            DiscoveredColumn.table_id == table.id
+    try:
+        tables_to_delete = db.query(DiscoveredTable).filter(
+            DiscoveredTable.project_id == project_id
+        ).all()
+        for table in tables_to_delete:
+            db.query(DiscoveredColumn).filter(
+                DiscoveredColumn.table_id == table.id
+            ).delete()
+        db.query(DiscoveredTable).filter(
+            DiscoveredTable.project_id == project_id
         ).delete()
-    db.query(DiscoveredTable).filter(
-        DiscoveredTable.project_id == project_id
-    ).delete()
-    db.commit()
+        db.commit()
 
-    for table_data in schema["tables"]:
-        db_table = DiscoveredTable(
-            project_id=project_id,
-            table_name=table_data["table_name"],
-            row_count=table_data["row_count"],
-            column_count=table_data["column_count"],
-            primary_keys=table_data["primary_keys"],
-            foreign_keys=table_data["foreign_keys"]
-        )
-        db.add(db_table)
-        db.flush()
-
-        for col_data in table_data["columns"]:
-            db_col = DiscoveredColumn(
+        for table_data in schema["tables"]:
+            db_table = DiscoveredTable(
                 project_id=project_id,
-                table_id=db_table.id,
                 table_name=table_data["table_name"],
-                column_name=col_data["name"],
-                data_type=col_data["type"],
-                is_nullable=col_data["nullable"],
-                is_primary_key=col_data["is_primary_key"],
-                foreign_key_info=col_data["foreign_key"]
+                row_count=table_data["row_count"],
+                column_count=table_data["column_count"],
+                primary_keys=table_data["primary_keys"],
+                foreign_keys=table_data["foreign_keys"]
             )
-            db.add(db_col)
+            db.add(db_table)
+            db.flush()
 
-    db.commit()
+            for col_data in table_data["columns"]:
+                db_col = DiscoveredColumn(
+                    project_id=project_id,
+                    table_id=db_table.id,
+                    table_name=table_data["table_name"],
+                    column_name=col_data["name"],
+                    data_type=col_data["type"],
+                    is_nullable=col_data["nullable"],
+                    is_primary_key=col_data["is_primary_key"],
+                    foreign_key_info=col_data["foreign_key"]
+                )
+                db.add(db_col)
 
-    current_snapshot_data = schema_to_snapshot_format(schema)
-    new_snapshot = SchemaSnapshot(
-        project_id=project_id,
-        snapshot=current_snapshot_data
-    )
-    db.add(new_snapshot)
-    db.commit()
+        db.commit()
+
+        current_snapshot_data = schema_to_snapshot_format(schema)
+        new_snapshot = SchemaSnapshot(
+            project_id=project_id,
+            snapshot=current_snapshot_data
+        )
+        db.add(new_snapshot)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.exception(
+            "Persisting discovered metadata failed: project_id=%s source_type=%s %s",
+            project_id,
+            _connection_source_type(connection),
+            _connection_target_description(connection),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Metadata discovery failed: {str(e)}"
+        )
 
     record_activity(
         db, project_id,
@@ -211,8 +242,14 @@ def refresh_schema_with_drift(
     try:
         schema = discover_schema(connector)
     except Exception as e:
+        logger.exception(
+            "Metadata discovery (refresh-schema) failed: project_id=%s source_type=%s %s",
+            project_id,
+            _connection_source_type(connection),
+            _connection_target_description(connection),
+        )
         raise HTTPException(
-            status_code=500, detail=f"Discovery failed: {str(e)}"
+            status_code=500, detail=f"Metadata discovery failed: {str(e)}"
         )
     finally:
         if hasattr(connector, 'dispose'):
@@ -461,6 +498,11 @@ def get_metadata_catalog(
                     try:
                         count = len(connector.get_tables_for_schema(schema_name))
                     except Exception:
+                        logger.exception(
+                            "Failed to count tables for secondary schema: "
+                            "project_id=%s source_type=%s schema_name=%s",
+                            project_id, _connection_source_type(connection), schema_name,
+                        )
                         count = None
                     schemas.append(SchemaSummary(
                         name=schema_name,
@@ -470,7 +512,11 @@ def get_metadata_catalog(
             finally:
                 connector.dispose()
         except Exception:
-            pass
+            logger.exception(
+                "Failed to enumerate secondary schemas for catalog overview: "
+                "project_id=%s source_type=%s",
+                project_id, _connection_source_type(connection),
+            )
 
     table_summaries = [
         CatalogTableSummary(
@@ -557,7 +603,12 @@ def get_catalog_table_detail(
         elif connection.file_path and os.path.exists(connection.file_path):
             data_size_bytes = os.path.getsize(connection.file_path)
     except Exception:
-        pass
+        logger.exception(
+            "Failed to load live table detail: project_id=%s source_type=%s "
+            "table_name=%s %s",
+            project_id, _connection_source_type(connection), table_name,
+            _connection_target_description(connection),
+        )
     finally:
         if hasattr(connector, 'dispose'):
             connector.dispose()
