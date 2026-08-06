@@ -10,10 +10,15 @@ class CsvDialectInfo(TypedDict):
     delimiter: Optional[str]
 
 
+CSV_ENCODING_CANDIDATES = ("utf-8", "utf-8-sig", "cp1252", "latin1")
+
+
 def detect_csv_dialect(file_path: str, sample_bytes: int = 8192) -> CsvDialectInfo:
-    """Best-effort encoding/delimiter detection for display purposes, read
-    from a small prefix of the file rather than the full dataset."""
-    for encoding in ("utf-8", "latin-1"):
+    """Best-effort encoding/delimiter detection, read from a small prefix of
+    the file rather than the full dataset. Tries encodings in the same order
+    used to actually load the file, so the reported encoding matches what
+    gets passed to pd.read_csv()."""
+    for encoding in CSV_ENCODING_CANDIDATES:
         try:
             with open(file_path, "r", encoding=encoding) as f:
                 sample = f.read(sample_bytes)
@@ -25,6 +30,20 @@ def detect_csv_dialect(file_path: str, sample_bytes: int = 8192) -> CsvDialectIn
         except (UnicodeDecodeError, OSError):
             continue
     return {"encoding": None, "delimiter": None}
+
+
+def read_csv_with_fallback_encoding(file_path: str, **kwargs) -> pd.DataFrame:
+    """Load a CSV with pandas, trying encodings in order until one decodes
+    successfully. cp1252/latin1 rarely raise UnicodeDecodeError (they map
+    every byte), so they act as safe final fallbacks."""
+    last_error: Optional[Exception] = None
+    for encoding in CSV_ENCODING_CANDIDATES:
+        try:
+            return pd.read_csv(file_path, encoding=encoding, **kwargs)
+        except UnicodeDecodeError as e:
+            last_error = e
+            continue
+    raise last_error
 
 
 class CSVConnector(BaseConnector):
@@ -39,7 +58,7 @@ class CSVConnector(BaseConnector):
         if self.conn is None:
             self.conn = duckdb.connect(database=":memory:")
             if self.file_path.endswith(".csv"):
-                self.df = pd.read_csv(self.file_path)
+                self.df = read_csv_with_fallback_encoding(self.file_path)
             elif self.file_path.endswith((".xlsx", ".xls")):
                 self.df = pd.read_excel(self.file_path)
             else:
