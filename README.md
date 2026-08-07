@@ -8,6 +8,10 @@ Turning a raw CSV export or an operational Postgres database into something a bu
 
 Each unit of work in Stratum is a **project**: a domain, a connected data source, and the pipeline results (schema catalog, relationships, profiling, quality scores, warehouse design, KPIs, dashboards, insights) that belong to it.
 
+## Live Demo
+
+(https://stratum-tau-brown.vercel.app/)
+
 ## Key Features
 
 **Data Ingestion**
@@ -270,10 +274,8 @@ The backend's CORS configuration explicitly allows `*.vercel.app` and `*.onrende
 - **One data source connection per project** — the connector model doesn't currently support multiple sources feeding a single project.
 - **LLM calls (SQL generation, insight generation) run synchronously** within the request/response cycle rather than as background jobs, so latency is tied directly to the Groq API's response time.
 
-## Screenshots / Demo
+## Author
 
-_Screenshots or a link to a live deployment can be added here._
+**Parineeta Rao**
 
-## License / Author
-
-No license file is currently included in this repository. All rights reserved by the author unless a license is added.
+Built as a full-stack Analytics Engineering platform showcasing backend engineering, data engineering, analytics, AI integration, and modern web application development.
