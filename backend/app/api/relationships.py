@@ -11,20 +11,13 @@ from app.schemas.relationship import (
 )
 from typing import Optional
 from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
-from app.connectors.postgres_connector import PostgresConnector
-from app.connectors.csv_connector import CSVConnector
+from app.connectors.factory import build_connector as get_connector
 from app.engine.relationship_inference import infer_relationships
 
 router = APIRouter(prefix="/projects", tags=["Relationships"])
 
 AUTO_ACCEPT_TIER = "high"
 DISCARD_TIER = "low"
-
-def get_connector(connection: Connection):
-    if connection.connection_type == ConnectionType.postgresql:
-        return PostgresConnector(connection.connection_string, source_schema=connection.source_schema or "public")
-    else:
-        return CSVConnector(connection.file_path)
 
 @router.post("/{project_id}/infer-relationships", response_model=RelationshipListResponse)
 def run_relationship_inference(

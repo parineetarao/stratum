@@ -226,6 +226,38 @@ export async function connectFile(projectId: number, file: File): Promise<Connec
   return data;
 }
 
+export interface ConnectionFile {
+  id: number;
+  connection_id: number;
+  original_filename: string;
+  file_type: string;
+  table_name: string;
+  encoding: string | null;
+  delimiter: string | null;
+  uploaded_at: string;
+}
+
+// Additive multi-file upload: keeps existing uploaded files and adds these
+// as new tables. Use connectFile() instead when the intent is to replace
+// the entire data source with a single file.
+export async function connectFiles(projectId: number, files: File[]): Promise<ConnectionFile[]> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files', file));
+  const { data } = await apiClient.post<ConnectionFile[]>(`/projects/${projectId}/connect/files`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export async function listConnectionFiles(projectId: number): Promise<ConnectionFile[]> {
+  const { data } = await apiClient.get<ConnectionFile[]>(`/projects/${projectId}/connection/files`);
+  return data;
+}
+
+export async function deleteConnectionFile(projectId: number, fileId: number): Promise<void> {
+  await apiClient.delete(`/projects/${projectId}/connection/files/${fileId}`);
+}
+
 export interface ForeignKeyInfo {
   column: string;
   referenced_table: string;

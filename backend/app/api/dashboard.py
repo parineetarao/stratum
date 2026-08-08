@@ -13,8 +13,7 @@ from app.schemas.dashboard import (
     DashboardReportResponse, ReportSection
 )
 from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
-from app.connectors.postgres_connector import PostgresConnector
-from app.connectors.csv_connector import CSVConnector
+from app.connectors.factory import build_connector as get_connector
 from app.engine.chart_selector import format_value, get_supported_chart_types
 from app.engine.kpi_engine import execute_kpi_sql
 from app.engine.sandbox_engine import run_query_in_sandbox
@@ -57,14 +56,6 @@ def _check_connector_reachable(connector) -> None:
         )
 
 
-def get_connector(connection: Connection):
-    if connection.connection_type == ConnectionType.postgresql:
-        return PostgresConnector(
-            connection.connection_string,
-            source_schema=connection.source_schema or "public"
-        )
-    else:
-        return CSVConnector(connection.file_path)
 
 
 def run_sql(sql: str, mode: str, project_id: int, connector):

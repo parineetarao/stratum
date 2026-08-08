@@ -14,8 +14,7 @@ from app.schemas.sandbox import (
     SandboxScheduleRequest
 )
 from app.api.deps import get_current_user
-from app.connectors.postgres_connector import PostgresConnector
-from app.connectors.csv_connector import CSVConnector
+from app.connectors.factory import build_connector as get_connector
 from app.engine.sandbox_engine import (
     initialize_sandbox,
     execute_warehouse_ddl,
@@ -29,13 +28,6 @@ from app.core.scheduler import scheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 router = APIRouter(prefix="/projects", tags=["Sandbox"])
-
-
-def get_connector(connection: Connection):
-    if connection.connection_type == ConnectionType.postgresql:
-        return PostgresConnector(connection.connection_string, source_schema=connection.source_schema or "public")
-    else:
-        return CSVConnector(connection.file_path)
 
 
 @router.post("/{project_id}/sandbox/initialize",

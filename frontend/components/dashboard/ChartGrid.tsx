@@ -58,7 +58,7 @@ export default function ChartGrid({
           className="flex flex-col items-center justify-center"
           style={{
             gridColumn: 'span 4',
-            minHeight: 300,
+            height: 300,
             borderRadius: 12,
             border: '1px dashed rgba(148, 163, 184, 0.28)',
             background: 'rgba(148, 163, 184, 0.03)',

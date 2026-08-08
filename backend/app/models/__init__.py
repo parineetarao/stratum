@@ -1,6 +1,7 @@
 from app.models.user import User
 from app.models.project import Project
 from app.models.connection import Connection
+from app.models.connection_file import ConnectionFile
 from app.models.schema_metadata import DiscoveredTable, DiscoveredColumn
 from app.models.relationship import InferredRelationship
 from app.models.profiling import ProfilingRun, ColumnProfile

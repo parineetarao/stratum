@@ -1,7 +1,8 @@
 import csv
+import re
 import duckdb
 import pandas as pd
-from typing import List, Dict, Any, Optional, TypedDict
+from typing import List, Dict, Any, Optional, Tuple, TypedDict
 from app.connectors.base import BaseConnector
 
 
@@ -46,24 +47,42 @@ def read_csv_with_fallback_encoding(file_path: str, **kwargs) -> pd.DataFrame:
     raise last_error
 
 
+def _slugify_table_name(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_]+", "_", name.strip()).strip("_").lower()
+    return slug or "sheet"
+
+
 class CSVConnector(BaseConnector):
+    """Loads a single uploaded CSV/Excel file. A CSV maps to one table
+    (`table_name`). An Excel workbook maps one table per sheet: a
+    single-sheet workbook keeps `table_name` as-is, a multi-sheet workbook
+    gets one table per sheet named `f"{table_name}_{sheet_slug}"`."""
 
     def __init__(self, file_path: str, table_name: str = "uploaded_data"):
         self.file_path = file_path
         self.table_name = table_name
         self.conn = None
-        self.df = None
+        self.tables: Dict[str, pd.DataFrame] = {}
 
     def _get_connection(self):
         if self.conn is None:
             self.conn = duckdb.connect(database=":memory:")
             if self.file_path.endswith(".csv"):
-                self.df = read_csv_with_fallback_encoding(self.file_path)
+                self.tables[self.table_name] = read_csv_with_fallback_encoding(self.file_path)
             elif self.file_path.endswith((".xlsx", ".xls")):
-                self.df = pd.read_excel(self.file_path)
+                workbook = pd.ExcelFile(self.file_path)
+                sheet_names = workbook.sheet_names
+                for sheet_name in sheet_names:
+                    name = (
+                        self.table_name
+                        if len(sheet_names) == 1
+                        else f"{self.table_name}_{_slugify_table_name(sheet_name)}"
+                    )
+                    self.tables[name] = workbook.parse(sheet_name)
             else:
                 raise ValueError("Unsupported file type. Use CSV or Excel.")
-            self.conn.register(self.table_name, self.df)
+            for name, df in self.tables.items():
+                self.conn.register(name, df)
         return self.conn
 
     def test_connection(self) -> bool:
@@ -74,7 +93,8 @@ class CSVConnector(BaseConnector):
             raise ConnectionError(f"Failed to load file: {str(e)}")
 
     def get_tables(self) -> List[str]:
-        return [self.table_name]
+        self._get_connection()
+        return list(self.tables.keys())
 
     def get_columns(self, table_name: str) -> List[Dict[str, Any]]:
         conn = self._get_connection()
@@ -128,3 +148,73 @@ class CSVConnector(BaseConnector):
 
     def get_constraints(self, table_name: str) -> List[Dict[str, Any]]:
         return []
+
+
+class MultiFileConnector(BaseConnector):
+    """Aggregates multiple uploaded CSV/Excel files (each an independent
+    CSVConnector) behind a single BaseConnector, so downstream code (schema
+    discovery, profiling, relationships, warehouse, KPIs, SQL workspace,
+    dashboard) sees one flat table namespace regardless of how many files
+    back a project."""
+
+    def __init__(self, files: List[Tuple[str, str]]):
+        # files: list of (stored_path, table_name) pairs, one per uploaded file.
+        self._file_connectors = [
+            CSVConnector(path, table_name=table_name) for path, table_name in files
+        ]
+        self._by_table: Dict[str, CSVConnector] = {}
+        self._combined_conn: Optional[duckdb.DuckDBPyConnection] = None
+
+    def _build_index(self):
+        if not self._by_table:
+            for connector in self._file_connectors:
+                for table in connector.get_tables():
+                    self._by_table[table] = connector
+
+    def _connector_for(self, table_name: str) -> CSVConnector:
+        self._build_index()
+        if table_name not in self._by_table:
+            raise ValueError(f"Unknown table: {table_name}")
+        return self._by_table[table_name]
+
+    def test_connection(self) -> bool:
+        for connector in self._file_connectors:
+            connector.test_connection()
+        return True
+
+    def get_tables(self) -> List[str]:
+        self._build_index()
+        return list(self._by_table.keys())
+
+    def get_columns(self, table_name: str) -> List[Dict[str, Any]]:
+        return self._connector_for(table_name).get_columns(table_name)
+
+    def get_row_count(self, table_name: str) -> int:
+        return self._connector_for(table_name).get_row_count(table_name)
+
+    def get_sample_values(self, table_name: str, column_name: str, limit: int = 100) -> List[Any]:
+        return self._connector_for(table_name).get_sample_values(table_name, column_name, limit)
+
+    def run_query(self, sql: str) -> pd.DataFrame:
+        if self._combined_conn is None:
+            self._build_index()
+            self._combined_conn = duckdb.connect(database=":memory:")
+            for table_name, connector in self._by_table.items():
+                connector._get_connection()
+                self._combined_conn.register(table_name, connector.tables[table_name])
+        return self._combined_conn.execute(sql).df()
+
+    def get_primary_keys(self, table_name: str) -> List[str]:
+        return self._connector_for(table_name).get_primary_keys(table_name)
+
+    def get_foreign_keys(self, table_name: str) -> List[Dict[str, Any]]:
+        return self._connector_for(table_name).get_foreign_keys(table_name)
+
+    def get_sample_rows(self, table_name: str, limit: int = 5) -> List[Dict[str, Any]]:
+        return self._connector_for(table_name).get_sample_rows(table_name, limit)
+
+    def get_indexes(self, table_name: str) -> List[Dict[str, Any]]:
+        return self._connector_for(table_name).get_indexes(table_name)
+
+    def get_constraints(self, table_name: str) -> List[Dict[str, Any]]:
+        return self._connector_for(table_name).get_constraints(table_name)

@@ -12,7 +12,7 @@ from app.api import sandbox as sandbox_router
 from app.api import dashboard as dashboard_router
 from app.api import insights as insights_router
 from app.api import overview as overview_router
-from app.models import user, project, connection, schema_metadata, relationship
+from app.models import user, project, connection, connection_file, schema_metadata, relationship
 from app.models import profiling as profiling_model
 from app.models import cleaning as cleaning_model
 from app.models import warehouse as warehouse_model
@@ -60,6 +60,15 @@ def ensure_project_table_columns():
                 except Exception:
                     pass
 
+def ensure_connection_files_table():
+    """Idempotent table creation for already-deployed databases that predate
+    multi-file upload support. Only creates the table if missing; never
+    touches existing connections/data."""
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
+    if not inspector.has_table("connection_files"):
+        Base.metadata.tables["connection_files"].create(bind=engine)
+
 def init_db():
     """Optional dev-only schema bootstrap. Production/CI schema changes are
     expected to go through Alembic migrations; set AUTO_CREATE_TABLES=true
@@ -67,9 +76,10 @@ def init_db():
     if settings.AUTO_CREATE_TABLES:
         Base.metadata.create_all(bind=engine)
         ensure_kpi_table_columns()
-    # Safe to run unconditionally: idempotent, checks column existence first,
-    # so it also backfills is_demo on already-deployed databases.
+    # Safe to run unconditionally: idempotent, checks column/table existence
+    # first, so it also backfills already-deployed databases.
     ensure_project_table_columns()
+    ensure_connection_files_table()
 
 init_db()
 

@@ -25,3 +25,9 @@ class Connection(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("Project", back_populates="connection")
+    files = relationship(
+        "ConnectionFile",
+        back_populates="connection",
+        cascade="all, delete-orphan",
+        order_by="ConnectionFile.id",
+    )

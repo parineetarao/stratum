@@ -16,23 +16,13 @@ from app.schemas.warehouse import (
 )
 from typing import Optional
 from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
-from app.connectors.postgres_connector import PostgresConnector
-from app.connectors.csv_connector import CSVConnector
+from app.connectors.factory import build_connector as get_connector
 from app.engine.warehouse_designer import design_warehouse
 from app.engine.sandbox_engine import (
     initialize_sandbox, execute_warehouse_ddl, sandbox_exists, validate_warehouse
 )
 
 router = APIRouter(prefix="/projects", tags=["Warehouse"])
-
-
-def get_connector(connection: Connection):
-    if connection.connection_type == ConnectionType.postgresql:
-        return PostgresConnector(
-            connection.connection_string,
-            source_schema=connection.source_schema or "public"
-        )
-    return CSVConnector(connection.file_path)
 
 
 def build_schema_from_db(project_id: int, db: Session):

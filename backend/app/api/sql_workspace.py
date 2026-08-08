@@ -18,8 +18,7 @@ from app.schemas.sql_workspace import (
     QueryHistoryResponse
 )
 from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
-from app.connectors.postgres_connector import PostgresConnector
-from app.connectors.csv_connector import CSVConnector
+from app.connectors.factory import build_connector as get_connector
 from app.engine.sandbox_engine import run_query_in_sandbox, sandbox_exists
 from app.ai.sql_explainer import explain_sql
 from app.ai.sql_optimizer import optimize_sql
@@ -50,16 +49,6 @@ def build_schema_context(project_id: int, db: Session, limit_tables: int = 25) -
         parts.append(f"{table.table_name}({col_str})")
 
     return "; ".join(parts)
-
-
-def get_connector(connection: Connection):
-    if connection.connection_type == ConnectionType.postgresql:
-        return PostgresConnector(
-            connection.connection_string,
-            source_schema=connection.source_schema or "public"
-        )
-    else:
-        return CSVConnector(connection.file_path)
 
 
 @router.post("/{project_id}/sql/execute", response_model=SQLExecuteResponse)

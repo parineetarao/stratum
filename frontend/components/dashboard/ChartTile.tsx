@@ -12,6 +12,10 @@ export type ChartSize = 'small' | 'medium' | 'large';
 
 const SIZE_TO_WIDTH: Record<ChartSize, number> = { small: 4, medium: 6, large: 12 };
 
+// Bounded, deterministic card heights per size. The chart body fills this
+// via flex:1 + min-height:0 — it must never grow the card in return.
+const SIZE_TO_HEIGHT: Record<ChartSize, number> = { small: 300, medium: 390, large: 500 };
+
 export function widthToSize(width: number): ChartSize {
   if (width <= 4) return 'small';
   if (width <= 6) return 'medium';
@@ -88,7 +92,7 @@ export default function ChartTile({
         display: 'flex',
         flexDirection: 'column',
         transition: 'border 0.2s ease, box-shadow 0.2s ease',
-        minHeight: 300,
+        height: SIZE_TO_HEIGHT[size],
       }}
     >
       <div className="flex items-center justify-between" style={{ marginBottom: 12, gap: 8 }}>
@@ -350,7 +354,7 @@ export default function ChartTile({
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 220, overflow: 'auto' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: chart.chart_type === 'table' ? 'auto' : 'hidden' }}>
         {chart.chart_data.length === 0 ? (
           <div
             className="flex flex-col items-center justify-center"

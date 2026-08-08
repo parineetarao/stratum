@@ -37,6 +37,7 @@ import DataSourceStatsStrip from '@/components/workspace/data-source/DataSourceS
 import ActivityList from '@/components/workspace/data-source/ActivityList';
 import EditConnectionDialog from '@/components/workspace/data-source/EditConnectionDialog';
 import ReplaceCsvDialog from '@/components/workspace/data-source/ReplaceCsvDialog';
+import DataFilesPanel from '@/components/workspace/data-source/DataFilesPanel';
 import DisabledInDemo from '@/components/workspace/demoGuard';
 
 type LoadState = 'loading' | 'empty' | 'failed' | 'ready';
@@ -469,6 +470,8 @@ export default function DataSourcePage() {
       </div>
 
       <DataSourceStatsStrip stats={detail.stats} isCsv={isCsv} columns={statsColumns} />
+
+      {isCsv && <DataFilesPanel projectId={projectId} onFilesChanged={refreshAll} />}
 
       <div className="flex items-center" style={{ gap: 4, borderBottom: '1px solid rgba(148, 163, 184, 0.14)' }}>
         {(
