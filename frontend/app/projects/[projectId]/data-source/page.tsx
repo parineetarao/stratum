@@ -25,7 +25,9 @@ import {
   type Connection,
   type TableMetadata,
   type ActivityLogEntry,
+  type SchemaDriftResponse,
 } from '@/lib/api';
+import SchemaDriftPanel from '@/components/workspace/metadata/SchemaDriftPanel';
 import { useWorkspace } from '@/components/workspace/WorkspaceContext';
 import { useViewportWidth } from '@/hooks/useViewportWidth';
 import { formatRelativeTime } from '@/lib/formatRelativeTime';
@@ -85,6 +87,7 @@ export default function DataSourcePage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  const [driftResult, setDriftResult] = useState<SchemaDriftResponse | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isReplaceOpen, setIsReplaceOpen] = useState(false);
 
@@ -133,6 +136,7 @@ export default function DataSourcePage() {
     if (!detail || isRefreshing) return;
     setIsRefreshing(true);
     setActionMessage(null);
+    setDriftResult(null);
     try {
       const isCsv = detail.connection_type === 'csv' || detail.connection_type === 'excel';
       if (isCsv) {
@@ -143,12 +147,12 @@ export default function DataSourcePage() {
         setActionMessage({ tone: 'success', text: `Metadata discovered — ${result.table_count} table(s) found.` });
       } else {
         const result = await refreshSchema(projectId);
-        setActionMessage({
-          tone: 'success',
-          text: result.has_changes
-            ? `${result.recommendation} (${result.total_changes} change(s))`
-            : 'Metadata refreshed. No changes detected.',
-        });
+        setDriftResult(result);
+        setActionMessage(
+          result.has_changes
+            ? null
+            : { tone: 'success', text: 'Metadata refreshed. No changes detected.' }
+        );
       }
       refreshAll();
     } catch (err) {
@@ -379,6 +383,8 @@ export default function DataSourcePage() {
           {actionMessage.text}
         </div>
       )}
+
+      {driftResult && <SchemaDriftPanel drift={driftResult} onDismiss={() => setDriftResult(null)} />}
 
       <div
         style={{

@@ -13,6 +13,7 @@ import {
   type CatalogOverview,
   type CatalogTableSummary,
   type TableDetail,
+  type SchemaDriftResponse,
 } from '@/lib/api';
 import { useWorkspace } from '@/components/workspace/WorkspaceContext';
 import { useViewportWidth } from '@/hooks/useViewportWidth';
@@ -21,6 +22,7 @@ import CatalogStatsStrip from './CatalogStatsStrip';
 import SchemaPanel from './SchemaPanel';
 import TableListPanel from './TableListPanel';
 import TableDetailPanel from './TableDetailPanel';
+import SchemaDriftPanel from './SchemaDriftPanel';
 import DisabledInDemo from '@/components/workspace/demoGuard';
 
 type LoadState = 'loading' | 'empty' | 'failed' | 'ready';
@@ -66,6 +68,7 @@ export default function MetadataExplorer() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  const [driftResult, setDriftResult] = useState<SchemaDriftResponse | null>(null);
 
   const loadCatalog = useCallback(() => {
     let cancelled = false;
@@ -157,6 +160,7 @@ export default function MetadataExplorer() {
     if (isRefreshing) return;
     setIsRefreshing(true);
     setActionMessage(null);
+    setDriftResult(null);
     try {
       const hasRun = catalog !== null;
       if (!hasRun || isCsv) {
@@ -164,12 +168,12 @@ export default function MetadataExplorer() {
         setActionMessage({ tone: 'success', text: `Metadata discovered — ${result.table_count} table(s) found.` });
       } else {
         const result = await refreshSchema(projectId);
-        setActionMessage({
-          tone: 'success',
-          text: result.has_changes
-            ? `${result.recommendation} (${result.total_changes} change(s))`
-            : 'Metadata refreshed. No changes detected.',
-        });
+        setDriftResult(result);
+        setActionMessage(
+          result.has_changes
+            ? null
+            : { tone: 'success', text: 'Metadata refreshed. No changes detected.' }
+        );
       }
       refreshAll();
       if (selectedTable) retryDetail();
@@ -362,6 +366,8 @@ export default function MetadataExplorer() {
           {actionMessage.text}
         </div>
       )}
+
+      {driftResult && <SchemaDriftPanel drift={driftResult} onDismiss={() => setDriftResult(null)} />}
 
       <CatalogStatsStrip catalog={catalog} columns={statsColumns} />
 

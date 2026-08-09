@@ -292,10 +292,38 @@ export async function discoverSchema(projectId: number): Promise<SchemaResponse>
   return data;
 }
 
+export interface DriftChange {
+  table_name: string;
+  column_name: string | null;
+  severity: 'info' | 'warning' | 'critical' | string;
+  message: string;
+  old_type: string | null;
+  new_type: string | null;
+  changes: string[] | null;
+}
+
+export interface AffectedObject {
+  warehouse_table: string | null;
+  kpi_name: string | null;
+  source_table: string | null;
+  reason: string;
+  severity: 'info' | 'warning' | 'critical' | string;
+}
+
 export interface SchemaDriftResponse {
   project_id: number;
   has_changes: boolean;
   total_changes: number;
+  snapshot_compared_at: string | null;
+  current_snapshot_at: string;
+  added_tables: DriftChange[];
+  deleted_tables: DriftChange[];
+  added_columns: DriftChange[];
+  deleted_columns: DriftChange[];
+  modified_columns: DriftChange[];
+  affected_warehouse_tables: AffectedObject[];
+  affected_kpis: AffectedObject[];
+  total_affected_objects: number;
   recommendation: string;
 }
 
