@@ -1,6 +1,11 @@
-import type { Connection, Project } from './api';
+import type { Connection, ConnectionType, Project, ProjectConnectionSummary } from './api';
 
 export type Stage = 'connected' | 'awaiting_connection';
+
+// Both the full Connection (single-project fetch) and the lighter
+// ProjectConnectionSummary (nested in the projects list) carry everything
+// this view logic needs.
+type ConnectionLike = Pick<Connection | ProjectConnectionSummary, 'connection_type' | 'source_schema' | 'original_filename'>;
 
 export interface DataSourceInfo {
   label: string;
@@ -10,19 +15,19 @@ export interface DataSourceInfo {
 
 export interface ProjectWithConnection {
   project: Project;
-  connection: Connection | null;
+  connection: ConnectionLike | null;
   connectionUnresolved: boolean;
   dataSource: DataSourceInfo;
   stage: Stage;
 }
 
-const CONNECTION_TYPE_LABEL: Record<Connection['connection_type'], string> = {
+const CONNECTION_TYPE_LABEL: Record<ConnectionType, string> = {
   postgresql: 'PostgreSQL',
   csv: 'CSV Upload',
   excel: 'Excel Upload',
 };
 
-export function buildDataSourceInfo(connection: Connection | null): DataSourceInfo {
+export function buildDataSourceInfo(connection: ConnectionLike | null): DataSourceInfo {
   if (!connection) {
     return { label: 'Not connected', detail: null, isConnected: false };
   }
@@ -36,7 +41,7 @@ export function buildDataSourceInfo(connection: Connection | null): DataSourceIn
   return { label, detail, isConnected: true };
 }
 
-export function deriveStage(connection: Connection | null): Stage {
+export function deriveStage(connection: ConnectionLike | null): Stage {
   return connection ? 'connected' : 'awaiting_connection';
 }
 
@@ -48,7 +53,7 @@ export function deriveDisplayLabel(email: string): string {
 
 export function buildProjectWithConnection(
   project: Project,
-  connection: Connection | null | undefined,
+  connection: ConnectionLike | null | undefined,
   connectionUnresolved: boolean
 ): ProjectWithConnection {
   const resolvedConnection = connection ?? null;

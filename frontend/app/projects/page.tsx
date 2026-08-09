@@ -5,10 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Menu, Plus } from 'lucide-react';
 import {
   listProjects,
-  getProjectConnection,
   extractErrorMessage,
   type Project,
-  type Connection,
 } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
@@ -37,9 +35,6 @@ export default function ProjectsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-
-  const [connectionsById, setConnectionsById] = useState<Record<number, Connection | null>>({});
-  const [isConnectionsLoading, setIsConnectionsLoading] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('updated');
@@ -73,57 +68,20 @@ export default function ProjectsPage() {
     };
   }, [ready, retryCount]);
 
-  useEffect(() => {
-    const unresolved = projects.filter((project) => !(project.id in connectionsById));
-    if (unresolved.length === 0) return;
-
-    let cancelled = false;
-    setIsConnectionsLoading(true);
-
-    Promise.allSettled(
-      unresolved.map((project) =>
-        getProjectConnection(project.id).then((connection) => ({ id: project.id, connection }))
-      )
-    )
-      .then((results) => {
-        if (cancelled) return;
-        setConnectionsById((prev) => {
-          const next = { ...prev };
-          results.forEach((result) => {
-            if (result.status === 'fulfilled') {
-              next[result.value.id] = result.value.connection;
-            }
-          });
-          return next;
-        });
-      })
-      .finally(() => {
-        if (!cancelled) setIsConnectionsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projects, connectionsById]);
-
+  // The projects list response already nests each project's connection
+  // summary (see backend get_projects joinedload), so no per-project
+  // GET /projects/{id}/connection round trip is needed here.
   const itemsAll = useMemo(
-    () =>
-      projects.map((project) =>
-        buildProjectWithConnection(
-          project,
-          connectionsById[project.id],
-          !(project.id in connectionsById)
-        )
-      ),
-    [projects, connectionsById]
+    () => projects.map((project) => buildProjectWithConnection(project, project.connection, false)),
+    [projects]
   );
 
   const connectedCount = useMemo(
-    () => itemsAll.filter((item) => !item.connectionUnresolved && item.dataSource.isConnected).length,
+    () => itemsAll.filter((item) => item.dataSource.isConnected).length,
     [itemsAll]
   );
   const notConnectedCount = useMemo(
-    () => itemsAll.filter((item) => !item.connectionUnresolved && !item.dataSource.isConnected).length,
+    () => itemsAll.filter((item) => !item.dataSource.isConnected).length,
     [itemsAll]
   );
 
@@ -169,11 +127,6 @@ export default function ProjectsPage() {
 
   function handleDeleted(id: number) {
     setProjects((prev) => prev.filter((p) => p.id !== id));
-    setConnectionsById((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
     setDeleteTarget(null);
   }
 
@@ -332,7 +285,7 @@ export default function ProjectsPage() {
             <SummaryCards
               totalProjects={projects.length}
               connectedCount={connectedCount}
-              isConnectionsLoading={isConnectionsLoading}
+              isConnectionsLoading={false}
               columns={summaryColumns}
             />
 

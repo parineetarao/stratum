@@ -273,6 +273,27 @@ def test_profiling_runs_per_uploaded_table():
     assert profiled_tables == {"customers", "orders"}
 
 
+def test_projects_list_includes_nested_connection_summary():
+    """GET /projects must return each project's connection inline so the
+    frontend doesn't need one GET /projects/{id}/connection call per
+    project to render data-source status."""
+    token = _register_and_login("list-connection@test.com")
+    project_id = _create_project(token)
+
+    client.post(
+        f"/projects/{project_id}/connect/files",
+        files=[("files", ("customers.csv", io.BytesIO(CUSTOMERS_CSV), "text/csv"))],
+        headers=_auth_headers(token),
+    )
+
+    resp = client.get("/projects", headers=_auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    project = next(p for p in resp.json() if p["id"] == project_id)
+    assert project["connection"] is not None
+    assert project["connection"]["connection_type"] == "csv"
+    assert "connection_string" not in project["connection"]
+
+
 def test_postgres_connection_unaffected_by_file_model():
     """A PostgreSQL connection must not gain ConnectionFile rows or be
     routed through the multi-file connector."""

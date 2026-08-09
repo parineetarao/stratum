@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 from app.database import get_db
 from app.models.project import Project
@@ -31,7 +31,15 @@ def get_projects(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return db.query(Project).filter(Project.user_id == current_user.id).all()
+    # Eager-load the 1:1 connection so the frontend can render data-source
+    # status straight from this list instead of firing one
+    # GET /projects/{id}/connection request per project.
+    return (
+        db.query(Project)
+        .options(joinedload(Project.connection))
+        .filter(Project.user_id == current_user.id)
+        .all()
+    )
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 def get_project(

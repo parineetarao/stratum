@@ -115,6 +115,16 @@ export interface Project {
   created_at: string;
   updated_at: string | null;
   is_demo?: boolean;
+  // Present on GET /projects (list) so the UI can render data-source status
+  // without a per-project GET /projects/{id}/connection round trip.
+  connection?: ProjectConnectionSummary | null;
+}
+
+export interface ProjectConnectionSummary {
+  id: number;
+  connection_type: ConnectionType;
+  source_schema: string | null;
+  original_filename: string | null;
 }
 
 export interface CreateProjectPayload {
