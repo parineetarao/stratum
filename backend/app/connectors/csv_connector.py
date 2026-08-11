@@ -125,7 +125,49 @@ class CSVConnector(BaseConnector):
         return conn.execute(sql).df()
 
     def get_primary_keys(self, table_name: str) -> List[str]:
-        return []
+        """
+        CSV/Excel data carries no declared constraints, so a primary key
+        is inferred from the data itself: a column qualifies only if
+        every row has a non-null value and all values are unique — the
+        same definition a real PRIMARY KEY enforces in a database.
+
+        When multiple columns qualify (e.g. both an id column and an
+        incidentally-unique email column), the one that looks like an
+        identifier by name/type is preferred, so a free-text column
+        doesn't get picked over a real id column. Returns at most one
+        column: composite keys aren't inferred, since every downstream
+        caller (relationship inference, warehouse design) assumes a
+        single-column primary key per table.
+        """
+        self._get_connection()
+        df = self.tables.get(table_name)
+        if df is None or len(df) == 0:
+            return []
+
+        row_count = len(df)
+        candidates = [
+            col for col in df.columns
+            if not df[col].isnull().any() and df[col].nunique() == row_count
+        ]
+        if not candidates:
+            return []
+
+        table_token = table_name.lower()
+        column_order = {col: i for i, col in enumerate(df.columns)}
+
+        def rank(col: str):
+            lower = col.lower()
+            is_named_id = lower == "id" or lower == f"{table_token}_id"
+            ends_with_id = lower.endswith("_id")
+            is_numeric = pd.api.types.is_numeric_dtype(df[col])
+            return (
+                0 if is_named_id else 1,
+                0 if ends_with_id else 1,
+                0 if is_numeric else 1,
+                column_order[col],
+            )
+
+        return [min(candidates, key=rank)]
 
     def get_foreign_keys(self, table_name: str) -> List[Dict[str, Any]]:
         return []

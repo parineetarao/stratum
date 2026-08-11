@@ -19,6 +19,55 @@ router = APIRouter(prefix="/projects", tags=["Relationships"])
 AUTO_ACCEPT_TIER = "high"
 DISCARD_TIER = "low"
 
+
+def _find_source_column(db: Session, relationship: InferredRelationship) -> Optional[DiscoveredColumn]:
+    return db.query(DiscoveredColumn).filter(
+        DiscoveredColumn.project_id == relationship.project_id,
+        DiscoveredColumn.table_name == relationship.from_table,
+        DiscoveredColumn.column_name == relationship.from_column
+    ).first()
+
+
+def _promote_to_foreign_key(db: Session, relationship: InferredRelationship) -> None:
+    """
+    Writes an accepted inferred relationship into the same
+    foreign_key_info field that explicit, database-declared foreign keys
+    live in. warehouse_designer and relationship_graph (KPI/dashboard
+    join discovery) only ever read foreign_key_info — they know nothing
+    about InferredRelationship — so this is the one place an accepted
+    guess actually becomes usable outside the review UI itself.
+
+    If the same source column has more than one surviving candidate
+    target (rare, but possible when a column fuzzy-matches two tables),
+    accepting one overwrites any previous foreign_key_info on that
+    column — the latest accept is treated as the user's final answer
+    for that column.
+    """
+    column = _find_source_column(db, relationship)
+    if not column:
+        return
+    column.foreign_key_info = {
+        "column": relationship.from_column,
+        "referenced_table": relationship.to_table,
+        "referenced_column": relationship.to_column
+    }
+
+
+def _demote_from_foreign_key(db: Session, relationship: InferredRelationship) -> None:
+    """Reverses _promote_to_foreign_key when a previously-accepted
+    relationship is rejected or reset. Only clears foreign_key_info if it
+    still points at *this* relationship's target, so it never clobbers a
+    different accepted relationship that later overwrote it on the same
+    column."""
+    column = _find_source_column(db, relationship)
+    if not column or not column.foreign_key_info:
+        return
+    if (
+        column.foreign_key_info.get("referenced_table") == relationship.to_table
+        and column.foreign_key_info.get("referenced_column") == relationship.to_column
+    ):
+        column.foreign_key_info = None
+
 @router.post("/{project_id}/infer-relationships", response_model=RelationshipListResponse)
 def run_relationship_inference(
     project_id: int,
@@ -148,7 +197,14 @@ def decide_relationship(
     if not relationship:
         raise HTTPException(status_code=404, detail="Relationship not found")
 
+    previous_status = relationship.status
     relationship.status = decision.status
+
+    if decision.status == RelationshipStatus.accepted:
+        _promote_to_foreign_key(db, relationship)
+    elif previous_status == RelationshipStatus.accepted:
+        _demote_from_foreign_key(db, relationship)
+
     db.commit()
     db.refresh(relationship)
     return relationship
@@ -195,6 +251,7 @@ def bulk_accept_high_confidence(
 
     for rel in relationships:
         rel.status = RelationshipStatus.accepted
+        _promote_to_foreign_key(db, rel)
 
     db.commit()
 
