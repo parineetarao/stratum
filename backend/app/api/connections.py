@@ -229,7 +229,7 @@ def _unique_table_name(db: Session, connection_id: int, base_name: str) -> str:
 
 
 @router.post("/{project_id}/connect/file", response_model=ConnectionResponse)
-async def connect_file(
+def connect_file(
     project_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -284,7 +284,7 @@ async def connect_file(
 
 
 @router.post("/{project_id}/connect/files", response_model=List[ConnectionFileResponse])
-async def connect_files(
+def connect_files(
     project_id: int,
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
