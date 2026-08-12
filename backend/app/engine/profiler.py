@@ -3,11 +3,21 @@ import numpy as np
 from typing import List, Dict, Any, Optional
 from app.connectors.base import BaseConnector
 
+# A text-declared column is flagged as a type mismatch once at least this
+# fraction of its non-null values successfully parse as numeric. A strict
+# 100%-must-convert check misses the most common real-world case -- a
+# genuinely numeric column with one stray typo or placeholder value -- since
+# a single unconvertible value would otherwise hide an entire column of
+# obvious numbers. A high threshold still keeps genuinely text columns
+# (names, emails, ...) from being misflagged, since those convert at or near
+# 0%, nowhere close to this bar.
+TYPE_MISMATCH_CONVERSION_THRESHOLD = 0.95
+
 
 def detect_type_mismatch(series: pd.Series, declared_type: str) -> bool:
     normalized = declared_type.lower().split("(")[0].strip()
     excluded_types = [
-        "int", "float", "numeric", "decimal",
+        "int", "float", "double", "real", "numeric", "decimal",
         "timestamp", "date", "time", "bool", "boolean", "json"
     ]
     if any(t in normalized for t in excluded_types):
@@ -16,10 +26,10 @@ def detect_type_mismatch(series: pd.Series, declared_type: str) -> bool:
     if len(non_null) == 0:
         return False
     try:
-        pd.to_numeric(non_null)
-        return True
+        convertible_ratio = pd.to_numeric(non_null, errors="coerce").notna().mean()
     except (ValueError, TypeError):
         return False
+    return bool(convertible_ratio >= TYPE_MISMATCH_CONVERSION_THRESHOLD)
 
 
 def safe_top_values(series: pd.Series) -> List[Dict[str, Any]]:
