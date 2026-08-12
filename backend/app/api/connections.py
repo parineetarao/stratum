@@ -30,9 +30,9 @@ from app.connectors.csv_connector import detect_csv_dialect
 from app.connectors.factory import build_connector
 from app.core.connection_string import parse_postgres_connection_string
 from app.core.naming import sanitize_filename, sanitize_table_name
+from app.core.file_storage import materialize_file
 from app.config import settings
 from pathlib import Path
-import shutil
 
 router = APIRouter(prefix="/projects", tags=["Connections"])
 
@@ -81,11 +81,14 @@ def check_connection_health(connection: Connection) -> ConnectionHealth:
         else:
             files = connection.files
             if files:
-                missing = [f for f in files if not Path(f.stored_path).exists()]
+                # Rehydrate from the durable DB copy before checking, so a
+                # restart-wiped ephemeral disk doesn't get reported as
+                # unhealthy when the file is actually recoverable.
+                missing = [f for f in files if not Path(materialize_file(f)).exists()]
                 if missing:
                     return ConnectionHealth(
                         status="unhealthy",
-                        message=f"{len(missing)} uploaded file(s) could not be found on disk.",
+                        message=f"{len(missing)} uploaded file(s) could not be found.",
                         checked_at=now,
                     )
             elif not connection.file_path or not Path(connection.file_path).exists():
@@ -190,7 +193,7 @@ def connect_postgres(
 ALLOWED_FILE_EXTENSIONS = (".csv", ".xlsx", ".xls")
 
 
-def _save_upload_to_disk(project_id: int, file: UploadFile) -> tuple[Path, str]:
+def _save_upload_to_disk(project_id: int, file: UploadFile) -> tuple[Path, str, bytes]:
     filename = sanitize_filename(file.filename or "")
     if not filename.lower().endswith(ALLOWED_FILE_EXTENSIONS):
         raise HTTPException(status_code=400, detail="Only CSV and Excel files are supported")
@@ -208,10 +211,11 @@ def _save_upload_to_disk(project_id: int, file: UploadFile) -> tuple[Path, str]:
             file_path = project_upload_dir / f"{stem}_{counter}{suffix}"
             counter += 1
 
+    content = file.file.read()
     with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(content)
 
-    return file_path, filename
+    return file_path, filename, content
 
 
 def _unique_table_name(db: Session, connection_id: int, base_name: str) -> str:
@@ -241,7 +245,7 @@ def connect_file(
     project = get_project_for_access(project_id, db, current_user.id)
     ensure_project_is_mutable(project)
 
-    file_path, filename = _save_upload_to_disk(project_id, file)
+    file_path, filename, content = _save_upload_to_disk(project_id, file)
     extension = filename.split(".")[-1].lower()
     conn_type = ConnectionType.csv if extension == "csv" else ConnectionType.excel
 
@@ -271,6 +275,7 @@ def connect_file(
         table_name=table_name,
         encoding=dialect["encoding"],
         delimiter=dialect["delimiter"],
+        file_data=content,
     ))
     db.commit()
 
@@ -313,7 +318,7 @@ def connect_files(
 
     created: List[ConnectionFile] = []
     for file in files:
-        file_path, filename = _save_upload_to_disk(project_id, file)
+        file_path, filename, content = _save_upload_to_disk(project_id, file)
         extension = filename.split(".")[-1].lower()
         file_type = "csv" if extension == "csv" else "excel"
         dialect = detect_csv_dialect(str(file_path)) if extension == "csv" else {"encoding": None, "delimiter": None}
@@ -329,6 +334,7 @@ def connect_files(
             table_name=table_name,
             encoding=dialect["encoding"],
             delimiter=dialect["delimiter"],
+            file_data=content,
         )
         db.add(connection_file)
         db.commit()

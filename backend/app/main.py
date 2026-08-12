@@ -69,6 +69,22 @@ def ensure_connection_files_table():
     if not inspector.has_table("connection_files"):
         Base.metadata.tables["connection_files"].create(bind=engine)
 
+def ensure_connection_files_columns():
+    """Backfills columns added to connection_files after it first shipped —
+    e.g. file_data, the durable byte copy that lets an uploaded file survive
+    a restart on hosts with an ephemeral filesystem (no persistent disk)."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    if inspector.has_table("connection_files"):
+        existing_cols = {c["name"] for c in inspector.get_columns("connection_files")}
+        if "file_data" not in existing_cols:
+            with engine.connect() as conn:
+                try:
+                    conn.execute(text("ALTER TABLE connection_files ADD COLUMN file_data BYTEA"))
+                    conn.commit()
+                except Exception:
+                    pass
+
 def init_db():
     """Optional dev-only schema bootstrap. Production/CI schema changes are
     expected to go through Alembic migrations; set AUTO_CREATE_TABLES=true
@@ -80,6 +96,7 @@ def init_db():
     # first, so it also backfills already-deployed databases.
     ensure_project_table_columns()
     ensure_connection_files_table()
+    ensure_connection_files_columns()
 
 init_db()
 

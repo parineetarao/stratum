@@ -2,6 +2,7 @@ from app.models.connection import Connection, ConnectionType
 from app.connectors.base import BaseConnector
 from app.connectors.postgres_connector import PostgresConnector
 from app.connectors.csv_connector import CSVConnector, MultiFileConnector
+from app.core.file_storage import materialize_file
 
 
 def build_connector(connection: Connection) -> BaseConnector:
@@ -18,7 +19,10 @@ def build_connector(connection: Connection) -> BaseConnector:
 
     files = connection.files
     if files:
-        return MultiFileConnector([(f.stored_path, f.table_name) for f in files])
+        # Rehydrate from the DB copy first if the ephemeral host filesystem
+        # dropped the on-disk file (e.g. a container restart).
+        paths = [(materialize_file(f), f.table_name) for f in files]
+        return MultiFileConnector(paths)
 
     # Legacy file-based connection created before multi-file support, or a
     # brand-new connection row that hasn't had files attached yet.

@@ -13,6 +13,16 @@ const PREVIEW_COUNT = 5;
 
 export default function CriticalIssuesPanel({ issues }: { issues: QualityIssue[] }) {
   const [expanded, setExpanded] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  function toggleRow(key: string) {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const sorted = useMemo(
     () => [...issues].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'critical' ? -1 : 1)),
@@ -64,15 +74,28 @@ export default function CriticalIssuesPanel({ issues }: { issues: QualityIssue[]
             {visible.map((issue, idx) => {
               const meta = SEVERITY_META[issue.severity];
               const Icon = issue.severity === 'critical' ? AlertCircle : AlertTriangle;
+              const key = `${issue.table}-${issue.column}-${issue.issue_type}-${idx}`;
+              const isRowExpanded = expandedRows.has(key);
               return (
                 <div
-                  key={`${issue.table}-${issue.column}-${issue.issue_type}-${idx}`}
+                  key={key}
                   className="flex items-center justify-between"
                   style={{
                     gap: 12,
                     padding: '10px 4px',
                     borderTop: idx === 0 ? 'none' : '1px solid rgba(148, 163, 184, 0.08)',
+                    cursor: 'pointer',
                   }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleRow(key)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleRow(key);
+                    }
+                  }}
+                  aria-expanded={isRowExpanded}
                 >
                   <div className="flex items-start" style={{ gap: 10, minWidth: 0 }}>
                     <Icon size={15} style={{ color: meta.color, marginTop: 1, flexShrink: 0 }} aria-hidden="true" />
@@ -82,15 +105,25 @@ export default function CriticalIssuesPanel({ issues }: { issues: QualityIssue[]
                         {issue.column ? `.${issue.column}` : ''}
                       </div>
                       <div
-                        style={{
-                          fontSize: 12,
-                          color: 'rgba(226, 232, 240, 0.5)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          maxWidth: 380,
-                        }}
-                        title={issue.description}
+                        style={
+                          isRowExpanded
+                            ? {
+                                fontSize: 12,
+                                color: 'rgba(226, 232, 240, 0.5)',
+                                whiteSpace: 'normal',
+                                wordBreak: 'break-word',
+                                maxWidth: 480,
+                              }
+                            : {
+                                fontSize: 12,
+                                color: 'rgba(226, 232, 240, 0.5)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: 380,
+                              }
+                        }
+                        title={isRowExpanded ? undefined : issue.description}
                       >
                         {issue.description}
                       </div>

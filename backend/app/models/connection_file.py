@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, LargeBinary, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -22,5 +22,11 @@ class ConnectionFile(Base):
     encoding = Column(String, nullable=True)
     delimiter = Column(String, nullable=True)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Durable copy of the uploaded bytes. Host filesystems (e.g. Render web
+    # services without a persistent disk) are ephemeral and get wiped on
+    # every container restart, which would otherwise silently orphan
+    # stored_path. Kept alongside disk storage so a restart can rehydrate
+    # the file instead of failing reads with "file not found".
+    file_data = Column(LargeBinary, nullable=True)
 
     connection = relationship("Connection", back_populates="files")
