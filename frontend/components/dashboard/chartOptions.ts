@@ -1,5 +1,5 @@
 import type { DashboardChart } from '@/lib/api';
-import { ensureUsRegionsMapRegistered } from './usRegionsGeo';
+import { ensureUsStatesMapRegistered, normalizeStateName, isRecognizedUsState } from './usStatesGeo';
 
 // Reuses the category hues already established in KpiCard.tsx so dashboard
 // charts read as the same visual system as the KPI explorer.
@@ -195,9 +195,8 @@ export function chartRenderIssue(chart: DashboardChart): string | null {
   }
 
   if (chart.chart_type === 'map') {
-    const known = new Set(['northeast', 'midwest', 'south', 'southwest', 'west']);
-    const recognized = points.some((p) => known.has((p.label || '').toLowerCase()));
-    if (!recognized) return 'no recognized geographic regions in this data';
+    const recognized = points.some((p) => isRecognizedUsState(p.label));
+    if (!recognized) return 'values do not correspond to recognized US states';
   }
 
   if (points.length === 1 && chart.chart_type !== 'donut' && chart.chart_type !== 'pie') {
@@ -398,11 +397,19 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
   }
 
   if (chartType === 'map') {
-    const mapName = ensureUsRegionsMapRegistered();
-    const data = points.map((p, i) => ({
-      name: p.label || `Region ${i + 1}`,
-      value: toNumber(p.value),
-    }));
+    const mapName = ensureUsStatesMapRegistered();
+    // Only points that resolve to a real US state feature name are
+    // handed to the map series — anything else (an unrecognized city,
+    // a stray null) is silently dropped rather than plotted as a fake
+    // "region", per the requirement that this renderer never blindly
+    // paints arbitrary categories onto the US map.
+    const byState = new Map<string, number>();
+    for (const p of points) {
+      const name = normalizeStateName(p.label);
+      if (!name) continue;
+      byState.set(name, (byState.get(name) || 0) + toNumber(p.value));
+    }
+    const data = Array.from(byState.entries()).map(([name, value]) => ({ name, value }));
     const values = data.map((d) => d.value);
     const max = Math.max(...values, 1);
 
@@ -411,9 +418,14 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
         trigger: 'item',
         ...TOOLTIP_BASE,
         formatter: (params: unknown) => {
-          const p = params as { name?: string; value?: number };
-          const val = toNumber(p.value);
-          return `${p.name}<br/>${seriesName}: <b>${formatValue(val, unit)}${unitSuffix(unit)}</b>`;
+          const p = params as { name?: string; value?: number | string };
+          // ECharts passes the raw string '-' for states with no matching
+          // data entry — those still get a tooltip, just no value line.
+          const hasValue = typeof p.value === 'number';
+          const line = hasValue
+            ? `${seriesName}: <b>${formatValue(toNumber(p.value), unit)}${unitSuffix(unit)}</b>`
+            : `${seriesName}: <span style="opacity:0.6">no data</span>`;
+          return `${p.name}<br/>${line}`;
         },
       },
       visualMap: {
@@ -435,10 +447,13 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
           map: mapName,
           roam: false,
           silent: false,
-          label: { show: true, color: 'rgba(244, 244, 245, 0.85)', fontSize: 10 },
-          itemStyle: { borderColor: '#080d16', borderWidth: 1.5 },
+          // Every state in the GeoJSON is drawn regardless of whether it
+          // has a data entry — states with no matching value keep this
+          // neutral fill instead of disappearing from the map.
+          itemStyle: { areaColor: '#161f30', borderColor: '#080d16', borderWidth: 0.75 },
+          label: { show: false },
           emphasis: {
-            label: { color: '#f4f4f5' },
+            label: { show: true, color: '#f4f4f5', fontSize: 10 },
             itemStyle: { areaColor: color },
           },
           data,
@@ -469,14 +484,10 @@ export function allowedChartTypesFor(chart: DashboardChart): string[] {
   // Line/area only make sense for a genuine time-ordered series — a
   // categorical breakdown (by store, by category, ...) isn't a trend.
   if (chart.chart_form === 'time_series') types.unshift('area', 'line');
-  // Map only makes sense when the breakdown is actually geographic (or
-  // for a saved-query widget, when the data itself resolves to known
-  // regions) — offering it for an arbitrary categorical breakdown like
-  // "by status" would just render an all-grey map.
-  const known = new Set(['northeast', 'midwest', 'south', 'southwest', 'west']);
-  const looksGeographic =
-    chart.chart_form === 'geographic' ||
-    (chart.chart_data || []).some((p) => known.has((p.label || '').toLowerCase()));
-  if (looksGeographic) types.push('map');
+  // Map only makes sense when the data actually resolves to real US
+  // states — offering it for an arbitrary categorical breakdown like
+  // "by status" would just render an empty map.
+  const looksLikeStates = (chart.chart_data || []).some((p) => isRecognizedUsState(p.label));
+  if (looksLikeStates) types.push('map');
   return Array.from(new Set(types));
 }

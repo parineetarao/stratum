@@ -212,10 +212,15 @@ def generate_candidates(db, project_id: int, kpis: List[Dict[str, Any]]) -> List
                 continue
             seen_dimension_tables.add(path.dimension_table)
             label = _dimension_label(path.label_column, path.label_table)
+            # A joined dimension whose label column is itself a place name
+            # (addresses.state, addresses.country, ...) is just as
+            # geographic as one on the KPI's own table — same generic
+            # keyword check, just applied post-join.
+            joined_chart_form = "geographic" if is_geo_column(path.label_column) else "categorical"
             candidates.append(ChartCandidate(
                 widget_key=f"kpi{kpi_id}_by_{path.dimension_table}",
                 title=f"{name} by {label}",
-                chart_form="categorical",
+                chart_form=joined_chart_form,
                 value_label=label,
                 sql=joined_sql,
                 mode=mode,
