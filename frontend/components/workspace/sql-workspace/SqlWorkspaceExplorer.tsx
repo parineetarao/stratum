@@ -13,6 +13,7 @@ import {
   type SavedQuery,
 } from '@/lib/api';
 import { useWorkspace } from '@/components/workspace/WorkspaceContext';
+import { useDemoGuard } from '@/components/workspace/demoGuard';
 import TopBar from './TopBar';
 import SchemaBrowserPanel from './SchemaBrowserPanel';
 import QueryTabsBar from './QueryTabsBar';
@@ -21,6 +22,8 @@ import SqlEditor, { type SqlEditorHandle } from './SqlEditor';
 import ResultsPanel from './ResultsPanel';
 import AiAssistantPanel from './AiAssistantPanel';
 import SaveQueryModal from './SaveQueryModal';
+import DemoQueryPicker from './DemoQueryPicker';
+import type { CuratedDemoQuery } from './curatedDemoQueries';
 import { createTab, type QueryTab } from './types';
 import { formatSql, rowsToCsv, downloadCsv } from './uiHelpers';
 
@@ -28,13 +31,17 @@ let tabCounter = 1;
 
 export default function SqlWorkspaceExplorer() {
   const { overview } = useWorkspace();
+  const { isDemo, guard } = useDemoGuard();
   const projectId = overview.project.id;
   const searchParams = useSearchParams();
 
   const initialSql = searchParams.get('sql') ?? '';
   const initialEnv = (searchParams.get('env') as SqlEnvironment) || 'source';
 
-  const [environment, setEnvironment] = useState<SqlEnvironment>(initialEnv);
+  // Demo curated queries only exist against the real source connection —
+  // the warehouse sandbox toggle is meaningless here even if a sandbox
+  // happens to exist from the owner's original setup.
+  const [environment, setEnvironment] = useState<SqlEnvironment>(isDemo ? 'source' : initialEnv);
   const [tabs, setTabs] = useState<QueryTab[]>(() => [createTab('tab-1', 'Query 1', initialSql)]);
   const [activeTabId, setActiveTabId] = useState('tab-1');
 
@@ -102,15 +109,23 @@ export default function SqlWorkspaceExplorer() {
     });
   }
 
+  const canRunActiveTab = isDemo ? Boolean(activeTab?.queryId) : Boolean(activeTab?.sql.trim());
+
   const handleRun = useCallback(async () => {
-    if (!activeTab || !activeTab.sql.trim() || activeTab.isRunning) return;
+    if (!activeTab || !canRunActiveTab || activeTab.isRunning) return;
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
     updateActiveTab({ isRunning: true, error: null });
 
     try {
-      const data = await executeSql(projectId, activeTab.sql, environment, controller.signal);
+      const data = await executeSql(
+        projectId,
+        activeTab.sql,
+        environment,
+        controller.signal,
+        isDemo ? activeTab.queryId ?? undefined : undefined
+      );
       updateActiveTab({ result: data, error: data.success ? null : data.error, isRunning: false });
       if (data.success) {
         setAutoExplainToken((v) => v + 1);
@@ -119,7 +134,11 @@ export default function SqlWorkspaceExplorer() {
       updateActiveTab({ error: extractErrorMessage(err, 'Query execution failed.'), result: null, isRunning: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, environment, projectId]);
+  }, [activeTab, canRunActiveTab, environment, projectId, isDemo]);
+
+  function handleSelectDemoQuery(query: CuratedDemoQuery) {
+    updateActiveTab({ sql: query.sql, queryId: query.id, result: null, error: null });
+  }
 
   function handleStop() {
     abortControllerRef.current?.abort();
@@ -132,7 +151,7 @@ export default function SqlWorkspaceExplorer() {
   }
 
   function handleClear() {
-    updateActiveTab({ sql: '', result: null, error: null });
+    updateActiveTab({ sql: '', result: null, error: null, queryId: null });
   }
 
   function handleExport() {
@@ -207,12 +226,16 @@ export default function SqlWorkspaceExplorer() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <TopBar
         environment={environment}
-        onEnvironmentChange={setEnvironment}
-        sandboxAvailable={sandboxAvailable}
+        onEnvironmentChange={isDemo ? () => {} : setEnvironment}
+        sandboxAvailable={isDemo ? false : sandboxAvailable}
         connection={connection}
         onRefreshSchema={handleRefreshSchema}
         isRefreshing={isRefreshing}
       />
+
+      {isDemo && (
+        <DemoQueryPicker activeQueryId={activeTab.queryId ?? null} onSelect={handleSelectDemoQuery} />
+      )}
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div style={{ width: leftWidth, flexShrink: 0, borderRight: '1px solid rgba(148, 163, 184, 0.15)', background: '#0a0d12', minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -237,12 +260,12 @@ export default function SqlWorkspaceExplorer() {
           <EditorToolbar
             projectId={projectId}
             isRunning={activeTab.isRunning}
-            canRun={!!activeTab.sql.trim()}
+            canRun={canRunActiveTab}
             onRun={handleRun}
             onStop={handleStop}
             onFormat={handleFormat}
             onClear={handleClear}
-            onSave={() => setSaveModalOpen(true)}
+            onSave={guard(() => setSaveModalOpen(true))}
             onNewTab={handleAddTab}
             onExport={handleExport}
             canExport={!!activeTab.result?.success}
@@ -255,6 +278,7 @@ export default function SqlWorkspaceExplorer() {
               value={activeTab.sql}
               onChange={(sql) => updateActiveTab({ sql })}
               onRun={handleRun}
+              readOnly={isDemo}
             />
           </div>
 
@@ -263,22 +287,26 @@ export default function SqlWorkspaceExplorer() {
           </div>
         </div>
 
-        <div
-          onMouseDown={(e) => {
-            dragState.current = { side: 'right', startX: e.clientX, startWidth: rightWidth };
-          }}
-          style={{ width: 4, cursor: 'col-resize', flexShrink: 0, background: 'transparent' }}
-        />
+        {!isDemo && (
+          <>
+            <div
+              onMouseDown={(e) => {
+                dragState.current = { side: 'right', startX: e.clientX, startWidth: rightWidth };
+              }}
+              style={{ width: 4, cursor: 'col-resize', flexShrink: 0, background: 'transparent' }}
+            />
 
-        <div style={{ width: rightWidth, flexShrink: 0, borderLeft: '1px solid rgba(148, 163, 184, 0.15)', background: '#0a0d12', minHeight: 0 }}>
-          <AiAssistantPanel
-            projectId={projectId}
-            sql={activeTab.sql}
-            environment={environment}
-            autoExplainToken={autoExplainToken}
-            onInsertGenerated={handleInsertGenerated}
-          />
-        </div>
+            <div style={{ width: rightWidth, flexShrink: 0, borderLeft: '1px solid rgba(148, 163, 184, 0.15)', background: '#0a0d12', minHeight: 0 }}>
+              <AiAssistantPanel
+                projectId={projectId}
+                sql={activeTab.sql}
+                environment={environment}
+                autoExplainToken={autoExplainToken}
+                onInsertGenerated={handleInsertGenerated}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {saveModalOpen && <SaveQueryModal onCancel={() => setSaveModalOpen(false)} onSave={handleSaveQuery} />}

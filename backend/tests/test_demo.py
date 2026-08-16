@@ -76,6 +76,7 @@ def test_demo_connection_accessible_without_login():
     project_id = _create_demo_project()
     resp = client.get(f"/projects/{project_id}/connection")
     assert resp.status_code == 200
+    assert "connection_string" not in resp.json()
 
 
 def test_demo_relationships_accessible_without_login():
@@ -162,6 +163,21 @@ def test_demo_mutation_requires_auth_at_all():
     assert resp.status_code == 403 or resp.status_code == 401
 
 
+def test_demo_mutation_rejected_for_sandbox_initialize():
+    project_id = _create_demo_project()
+    token = _register_and_login("sandbox-editor@test.com")
+
+    resp = client.post(f"/projects/{project_id}/sandbox/initialize", headers=_auth_headers(token))
+    assert resp.status_code == 403
+    assert "unavailable in the public demo" in resp.json()["detail"]
+
+
+def test_demo_sandbox_status_accessible_without_login():
+    project_id = _create_demo_project()
+    resp = client.get(f"/projects/{project_id}/sandbox/status")
+    assert resp.status_code == 200
+
+
 def test_own_project_mutation_still_works():
     token = _register_and_login("full-access@test.com")
     project_id = _create_own_project(token)
@@ -204,7 +220,7 @@ def test_demo_sql_execute_accepts_curated_query_id():
     project_id = _create_demo_project()
     resp = client.post(
         f"/projects/{project_id}/sql/execute",
-        json={"query_id": "demo_monthly_rentals", "environment": "source"},
+        json={"query_id": "demo_revenue_by_state", "environment": "source"},
     )
     # No real Postgres is reachable in the test environment, so execution
     # itself fails, but the request must be accepted (not blocked as
@@ -220,3 +236,30 @@ def test_curated_demo_queries_all_have_row_limit():
     assert len(CURATED_DEMO_QUERIES) == 5
     for query in CURATED_DEMO_QUERIES.values():
         assert "LIMIT" in query["sql"].upper()
+
+
+# ---------------------------------------------------------------------------
+# Public demo discovery endpoint
+# ---------------------------------------------------------------------------
+
+def test_public_demo_endpoint_returns_demo_project():
+    project_id = _create_demo_project()
+    resp = client.get("/demo")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == project_id
+    assert body["name"] == "Pagila DVD Rental Analysis"
+    assert "user_id" not in body
+    assert "connection" not in body
+
+
+def test_public_demo_endpoint_404_when_no_demo_project():
+    resp = client.get("/demo")
+    assert resp.status_code == 404
+
+
+def test_public_demo_endpoint_ignores_non_demo_projects():
+    token = _register_and_login("no-demo-owner@test.com")
+    _create_own_project(token)
+    resp = client.get("/demo")
+    assert resp.status_code == 404

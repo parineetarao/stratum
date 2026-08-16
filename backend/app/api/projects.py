@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session, joinedload
-from typing import List
+from typing import List, Optional
 from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -45,15 +45,9 @@ def get_projects(
 def get_project(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
+    return get_project_for_access(project_id, db, current_user.id if current_user else None)
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 def update_project(
@@ -62,12 +56,8 @@ def update_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     if request.name is not None:
         project.name = request.name
@@ -86,12 +76,8 @@ def delete_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     db.delete(project)
     db.commit()

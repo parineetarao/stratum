@@ -15,8 +15,6 @@ interface StratumHeroProps {
   architectureHref?: string;
   docsHref?: string;
   loginHref?: string;
-  getStartedHref?: string;
-  signupHref?: string;
 }
 
 const ROTATING_WORDS = ['Deliver.', 'Validate.', 'Govern.', 'Scale.', 'Optimize.'];
@@ -139,7 +137,6 @@ export default function StratumHero(props: StratumHeroProps) {
         architectureHref={props.architectureHref}
         docsHref={props.docsHref}
         loginHref={props.loginHref}
-        getStartedHref={props.getStartedHref}
       />
 
       <main className="relative z-[2]" style={{ flex: 1 }}>
@@ -186,7 +183,7 @@ export default function StratumHero(props: StratumHeroProps) {
               trusted analytics through one engineering workflow.
             </p>
 
-            <HeroActions signupHref={props.signupHref} loginHref={props.loginHref} />
+            <HeroActions loginHref={props.loginHref} />
 
             <p style={{ marginTop: 24, fontSize: 14, color: 'rgba(244,244,245,0.7)' }}>
               Built for analytics engineers, data teams, and technical analysts.

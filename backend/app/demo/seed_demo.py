@@ -1,17 +1,31 @@
 """
-Idempotent, non-destructive seeding of the single public read-only demo
-project ("Pagila DVD Rental Analysis"). Drives the same engine pipeline the
-interactive workflow uses (metadata discovery, relationship inference,
-profiling, quality scoring, cleaning recommendations, warehouse design,
-KPI generation, insight generation) by calling the real API handler
+LEGACY / inactive path. The public demo is no longer seeded by this
+script - it's the "Retail Analytics Demo" project (built manually
+against the demo_retail schema, see demo/load_demo.py), flagged via
+backend/scripts/mark_demo_project.py (a one-off, run once against the
+deployed database). Project.is_demo remains the only runtime signal
+the app relies on; this file is kept only so the Pagila walkthrough it
+was originally built for still works if SEED_DEMO_PROJECT is
+deliberately re-enabled for some other purpose.
+
+Idempotent, non-destructive seeding of a demo project ("Pagila DVD
+Rental Analysis"). Drives the same engine pipeline the interactive
+workflow uses (metadata discovery, relationship inference, profiling,
+quality scoring, cleaning recommendations, warehouse design, KPI
+generation, insight generation) by calling the real API handler
 functions directly, so every module ends up with genuinely computed data
 instead of hand-authored fixtures.
 
-Safe to call on every app startup: if a demo project already exists this
-is a no-op. Requires DEMO_DATABASE_URL to point at a Postgres database
-already loaded with the Pagila schema/data (see pagila-schema.sql /
-pagila-data.sql at the repo root) - this script never loads data into
-that database itself, it only registers it as the demo project's source.
+Gated by SEED_DEMO_PROJECT (defaults to False - confirm it stays unset
+or false wherever the Retail Analytics Demo is the intended public
+demo). Safe to call on every app startup regardless: it no-ops as soon
+as ANY project has is_demo=True, which the Retail Analytics Demo
+already will after the one-off script runs - so this seed can never
+override or compete with it. Requires DEMO_DATABASE_URL to point at a
+Postgres database already loaded with the Pagila schema/data (see
+pagila-schema.sql / pagila-data.sql at the repo root) - this script
+never loads data into that database itself, it only registers it as
+the demo project's source.
 """
 import logging
 from sqlalchemy.orm import Session

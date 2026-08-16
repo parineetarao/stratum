@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from app.database import get_db
 from app.models.user import User
-from app.models.project import Project
 from app.models.connection import Connection, ConnectionType
 from app.models.warehouse import WarehouseDesign
 from app.models.schema_metadata import DiscoveredTable
@@ -13,7 +12,7 @@ from app.schemas.sandbox import (
     SandboxRefreshResponse,
     SandboxScheduleRequest
 )
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
 from app.connectors.factory import build_connector as get_connector
 from app.engine.sandbox_engine import (
     initialize_sandbox,
@@ -41,12 +40,8 @@ def initialize_project_sandbox(
     Copies all source tables from connected database into DuckDB sandbox.
     This is the first step before any sandbox operations.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     connection = db.query(Connection).filter(
         Connection.project_id == project_id
@@ -99,12 +94,8 @@ def create_warehouse_in_sandbox(
     Creates fact and dim tables populated from source data in DuckDB.
     Source database is never touched.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     if not sandbox_exists(project_id):
         raise HTTPException(
@@ -149,12 +140,8 @@ def refresh_sandbox_warehouse(
     Schema is unchanged. Only rows are updated.
     Use this when source data has changed and warehouse needs updating.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
 
     connection = db.query(Connection).filter(
         Connection.project_id == project_id
@@ -202,18 +189,13 @@ def refresh_sandbox_warehouse(
 def get_sandbox_status(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Returns current state of the project sandbox.
     Shows which tables exist and whether warehouse has been created.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     if not sandbox_exists(project_id):
         return SandboxStatusResponse(
@@ -257,6 +239,9 @@ def schedule_warehouse_refresh(
     Stratum will automatically pull latest source data and
     update warehouse tables at the configured frequency.
     """
+    project = get_project_for_access(project_id, db, current_user.id)
+    ensure_project_is_mutable(project)
+
     job_id = f"warehouse_refresh_{project_id}"
 
     existing = scheduler.get_job(job_id)
@@ -313,19 +298,14 @@ def schedule_warehouse_refresh(
 def get_sandbox_context(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Returns context-aware description of the sandbox role
     based on connection type. Used by frontend to adjust
     messaging without changing navigation structure.
     """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    get_project_for_access(project_id, db, current_user.id if current_user else None)
 
     connection = db.query(Connection).filter(
         Connection.project_id == project_id

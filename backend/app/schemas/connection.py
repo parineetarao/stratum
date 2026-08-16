@@ -17,10 +17,14 @@ class ConnectionTestResponse(BaseModel):
 
 
 class ConnectionResponse(BaseModel):
+    """
+    Deliberately excludes `connection_string` — it embeds the raw
+    host/user/password, and this response is reachable by anonymous
+    callers on public-demo projects via get_optional_user.
+    """
     id: int
     project_id: int
     connection_type: ConnectionType
-    connection_string: Optional[str] = None
     source_schema: Optional[str] = "public"
     original_filename: Optional[str] = None
 

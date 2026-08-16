@@ -232,7 +232,45 @@ export default function WorkspaceSidebar({
         {MANAGEMENT_NAV_ITEMS.map(renderItem)}
       </nav>
 
-      {userEmail && (
+      {overview.is_demo ? (
+        <div style={{ padding: '14px 16px 20px', borderTop: '1px solid rgba(148, 163, 184, 0.12)' }}>
+          <div className="flex items-center" style={{ gap: 10, padding: '4px 4px 8px' }}>
+            <div
+              className="flex items-center justify-center"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                background: 'rgba(148, 163, 184, 0.16)',
+                color: 'rgba(226, 232, 240, 0.75)',
+                fontSize: 12,
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              D
+            </div>
+            <span style={{ fontSize: 12.5, color: 'rgba(226, 232, 240, 0.75)', flex: 1 }}>Demo Workspace</span>
+          </div>
+          <Link
+            href="/login"
+            className="flex items-center justify-center no-underline transition-all duration-150"
+            style={{
+              width: '100%',
+              gap: 8,
+              marginTop: 6,
+              padding: '7px 12px',
+              borderRadius: 7,
+              fontSize: 12,
+              fontWeight: 500,
+              background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
+              color: '#fff',
+            }}
+          >
+            Sign up / Login
+          </Link>
+        </div>
+      ) : userEmail ? (
         <div style={{ padding: '14px 16px 20px', borderTop: '1px solid rgba(148, 163, 184, 0.12)' }}>
           <div
             className="flex items-center"
@@ -293,7 +331,7 @@ export default function WorkspaceSidebar({
             <span>Log Out</span>
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 

@@ -155,6 +155,19 @@ export async function updateProject(id: number, payload: UpdateProjectPayload): 
   return data;
 }
 
+export interface PublicDemoProject {
+  id: number;
+  name: string;
+  domain: string | null;
+}
+
+/** No auth required — resolves the id of the single is_demo=True project so
+ * "Explore Demo" never needs a hardcoded, environment-specific project id. */
+export async function getPublicDemoProject(): Promise<PublicDemoProject> {
+  const { data } = await apiClient.get<PublicDemoProject>('/demo');
+  return data;
+}
+
 export async function deleteProject(id: number): Promise<void> {
   await apiClient.delete(`/projects/${id}`);
 }

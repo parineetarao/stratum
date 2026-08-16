@@ -12,6 +12,7 @@ from app.api import sandbox as sandbox_router
 from app.api import dashboard as dashboard_router
 from app.api import insights as insights_router
 from app.api import overview as overview_router
+from app.api import public_demo as public_demo_router
 from app.models import user, project, connection, connection_file, schema_metadata, relationship
 from app.models import profiling as profiling_model
 from app.models import cleaning as cleaning_model
@@ -134,6 +135,7 @@ app.include_router(sql_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(insights_router.router)
 app.include_router(overview_router.router)
+app.include_router(public_demo_router.router)
 
 @app.on_event("startup")
 def seed_demo_on_startup():

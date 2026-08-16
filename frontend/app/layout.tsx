@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import DemoToastHost from '@/components/demo/DemoToastHost'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -18,6 +19,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className} style={{ background: '#020817', margin: 0, padding: 0 }}>
         {children}
+        <DemoToastHost />
       </body>
     </html>
   )

@@ -1,16 +1,15 @@
 import Link from 'next/link';
+import ExploreDemoButton from './ExploreDemoButton';
 
 interface HeroActionsProps {
-  signupHref?: string;
   loginHref?: string;
 }
 
-export default function HeroActions({ signupHref = '/register', loginHref = '/login' }: HeroActionsProps) {
+export default function HeroActions({ loginHref = '/login' }: HeroActionsProps) {
   return (
     <div className="flex flex-wrap items-center justify-center" style={{ marginTop: 34, gap: 14 }}>
-      <Link
-        href={signupHref}
-        className="no-underline transition-transform duration-150"
+      <ExploreDemoButton
+        className="transition-transform duration-150"
         style={{
           padding: '14px 20px',
           borderRadius: 12,
@@ -20,8 +19,8 @@ export default function HeroActions({ signupHref = '/register', loginHref = '/lo
           fontWeight: 600,
         }}
       >
-        Get Started
-      </Link>
+        Explore Demo
+      </ExploreDemoButton>
       <Link
         href={loginHref}
         className="no-underline transition-colors duration-150"
@@ -35,7 +34,7 @@ export default function HeroActions({ signupHref = '/register', loginHref = '/lo
           background: 'rgba(255,255,255,0.03)',
         }}
       >
-        Log In
+        Sign up / Login
       </Link>
     </div>
   );

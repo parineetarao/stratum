@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import ExploreDemoButton from './ExploreDemoButton';
 
 interface HeroNavbarProps {
   platformHref?: string;
@@ -8,7 +9,6 @@ interface HeroNavbarProps {
   architectureHref?: string;
   docsHref?: string;
   loginHref?: string;
-  getStartedHref?: string;
 }
 
 const NAV_LINK_STYLE = { color: '#D8DAE0', fontSize: 14, textDecoration: 'none' };
@@ -20,7 +20,6 @@ export default function HeroNavbar({
   architectureHref = '#',
   docsHref = '#',
   loginHref = '/login',
-  getStartedHref = '/login',
 }: HeroNavbarProps) {
   const navLinks = [
     { label: 'Platform', href: platformHref },
@@ -72,11 +71,10 @@ export default function HeroNavbar({
             className="hidden lg:inline-block whitespace-nowrap"
             style={{ color: '#CFD2DA', fontSize: 14, textDecoration: 'none' }}
           >
-            Log in
+            Sign up / Login
           </Link>
-          <Link
-            href={getStartedHref}
-            className="inline-flex items-center whitespace-nowrap no-underline"
+          <ExploreDemoButton
+            className="inline-flex items-center whitespace-nowrap"
             style={{
               gap: 8,
               padding: '10px 14px',
@@ -87,10 +85,9 @@ export default function HeroNavbar({
               fontWeight: 600,
             }}
           >
-            <span className="hidden sm:inline">Get Started Free</span>
-            <span className="sm:hidden">Get Started</span>
+            <span>Explore Demo</span>
             <ArrowRight size={14} className="flex-shrink-0" />
-          </Link>
+          </ExploreDemoButton>
         </div>
       </nav>
     </header>

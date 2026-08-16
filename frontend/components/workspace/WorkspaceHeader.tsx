@@ -150,10 +150,48 @@ export default function WorkspaceHeader({
                 {overview.status_label}
               </span>
             )}
+            {overview.is_demo && (
+              <span
+                className="inline-flex items-center"
+                style={{
+                  gap: 6,
+                  padding: '3px 10px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  background: 'rgba(139, 92, 246, 0.1)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: '#c4b5fd',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                View-only Demo
+              </span>
+            )}
           </div>
         </div>
 
         <div className="flex items-center" style={{ gap: 10, flexShrink: 0 }}>
+          {overview.is_demo && !isCompact && (
+            <button
+              type="button"
+              onClick={() => router.push('/login')}
+              style={{
+                height: 34,
+                padding: '0 14px',
+                borderRadius: 8,
+                border: 'none',
+                background: 'linear-gradient(100deg, #6f35f4 0%, #5169ff 55%, #2ea7ff 100%)',
+                color: '#fff',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Create your own project
+            </button>
+          )}
           {!isCompact && (
             <span
               className="inline-flex items-center"
