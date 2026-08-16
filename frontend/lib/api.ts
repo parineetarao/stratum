@@ -1068,7 +1068,7 @@ export interface DimensionTableDesign {
   classification_reasons: string[];
 }
 
-export type WarehouseSchemaType = 'star' | 'snowflake';
+export type WarehouseSchemaType = 'star' | 'snowflake' | 'galaxy';
 
 export interface WarehouseDesignResponse {
   project_id: number;

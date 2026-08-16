@@ -2,8 +2,8 @@
 Warehouse Designer
 ==================
 Classifies operational database tables into fact and dimension tables
-using structural heuristics, then generates a star or snowflake schema
-design with DDL SQL.
+using structural heuristics, then generates a star, snowflake, or galaxy
+schema design with DDL SQL.
 
 Classification heuristics (all empirically chosen):
     Fact table signals:
@@ -17,10 +17,16 @@ Classification heuristics (all empirically chosen):
         - Primarily descriptive/categorical columns
         - Referenced by foreign keys from other tables
 
-Schema recommendation:
-    Star schema:    dimension tables have no outgoing foreign keys
-    Snowflake:      one or more dimension tables have their own
-                    foreign keys pointing to other tables
+Schema recommendation (two independent axes - fact cardinality takes
+precedence over dimension normalization, since star/snowflake are both
+single-fact-table concepts):
+    Galaxy:         more than one fact table shares the dimension set
+                    (a fact constellation)
+    Snowflake:      exactly one fact table, and one or more dimension
+                    tables have their own foreign keys pointing to
+                    other dimension tables
+    Star:           exactly one fact table, dimension tables have no
+                    outgoing foreign keys
 """
 
 from typing import List, Dict, Any, Optional, Tuple
@@ -224,8 +230,24 @@ def identify_foreign_keys(
 
 def recommend_schema_type(
     schema: List[Dict[str, Any]],
+    fact_table_names: List[str],
     dimension_table_names: List[str]
 ) -> str:
+    """
+    Classifies the overall warehouse structure along two independent axes:
+
+        Fact cardinality:      one fact table vs. several sharing dimensions
+        Dimension normalization: denormalized dimensions vs. dimensions that
+                                  themselves reference other dimensions
+
+    More than one fact table means multiple fact tables share a conformed
+    set of dimensions - a fact constellation / galaxy schema - which takes
+    precedence over the star/snowflake distinction, since star and
+    snowflake are both single-fact-table concepts.
+    """
+    if len(fact_table_names) > 1:
+        return "galaxy"
+
     for table in schema:
         if table["table_name"] not in dimension_table_names:
             continue
@@ -447,7 +469,7 @@ def design_warehouse(
                 if table_name not in dimension_table_names:
                     dimension_table_names.append(table_name)
 
-    schema_type = recommend_schema_type(schema, dimension_table_names)
+    schema_type = recommend_schema_type(schema, fact_table_names, dimension_table_names)
     table_lookup = {t["table_name"]: t for t in schema}
 
     dim_warehouse_names = {

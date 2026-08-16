@@ -406,7 +406,13 @@ export default function WarehouseExplorer() {
             }}
           >
             <Layers size={12} aria-hidden="true" />
-            {isFlat ? 'Flat Analytical Model' : design.schema_type === 'snowflake' ? 'Snowflake Schema' : 'Star Schema'}
+            {isFlat
+              ? 'Flat Analytical Model'
+              : design.schema_type === 'galaxy'
+              ? 'Galaxy Schema'
+              : design.schema_type === 'snowflake'
+              ? 'Snowflake Schema'
+              : 'Star Schema'}
           </div>
 
           <WarehouseGraph design={design} />

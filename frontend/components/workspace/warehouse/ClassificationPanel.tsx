@@ -141,7 +141,13 @@ export default function ClassificationPanel({
   isOverriding: boolean;
 }) {
   const isFlat = design.fact_count + design.dimension_count === 1;
-  const badgeLabel = isFlat ? 'Flat Analytical Model' : design.schema_type === 'snowflake' ? 'Snowflake Schema' : 'Star Schema';
+  const badgeLabel = isFlat
+    ? 'Flat Analytical Model'
+    : design.schema_type === 'galaxy'
+    ? 'Galaxy Schema'
+    : design.schema_type === 'snowflake'
+    ? 'Snowflake Schema'
+    : 'Star Schema';
 
   return (
     <div className="flex flex-col" style={{ gap: 16, height: '100%', overflowY: 'auto' }}>
