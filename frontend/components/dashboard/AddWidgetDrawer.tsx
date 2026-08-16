@@ -30,6 +30,7 @@ const CHART_TYPE_OPTIONS = [
   { value: 'area', label: 'Area' },
   { value: 'donut', label: 'Donut' },
   { value: 'pie', label: 'Pie' },
+  { value: 'map', label: 'Map (region)' },
   { value: 'table', label: 'Table' },
 ];
 

@@ -284,7 +284,7 @@ def build_query_widget_charts(
             grid_width=config.grid_width if config.grid_width is not None else 6,
             is_visible=config.is_visible if config.is_visible is not None else True,
             color_scheme=config.color_scheme,
-            supported_chart_types=["bar", "horizontal_bar", "line", "area", "donut", "pie", "table"],
+            supported_chart_types=["bar", "horizontal_bar", "line", "area", "donut", "pie", "map", "table"],
             x_field="label",
             y_field="value",
             x_axis_label=x_label,
@@ -479,7 +479,7 @@ def add_query_widget(
     if not saved_query:
         raise HTTPException(status_code=404, detail="Saved query not found")
 
-    if payload.chart_type not in ("bar", "horizontal_bar", "line", "area", "donut", "pie", "table"):
+    if payload.chart_type not in ("bar", "horizontal_bar", "line", "area", "donut", "pie", "map", "table"):
         raise HTTPException(status_code=400, detail="Unsupported chart type")
 
     if saved_query.environment == "warehouse" and not sandbox_exists(project_id):
@@ -580,7 +580,7 @@ def add_query_widget(
         grid_width=config.grid_width or 6,
         is_visible=True,
         color_scheme=config.color_scheme,
-        supported_chart_types=["bar", "horizontal_bar", "line", "area", "donut", "pie", "table"],
+        supported_chart_types=["bar", "horizontal_bar", "line", "area", "donut", "pie", "map", "table"],
         x_field="label",
         y_field="value",
         x_axis_label=x_label,

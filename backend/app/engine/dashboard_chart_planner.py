@@ -25,7 +25,7 @@ Flow:
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-from app.engine.dimension_finder import extract_table_name, find_dimensions
+from app.engine.dimension_finder import extract_table_name, find_dimensions, is_geo_column
 from app.engine.relationship_graph import find_dimension_paths
 from app.engine.chart_breakdown import (
     build_timeseries_sql,
@@ -104,6 +104,13 @@ def _customer_id_column(categorical_columns: List[str]) -> Optional[str]:
     return None
 
 
+def _geo_column(categorical_columns: List[str]) -> Optional[str]:
+    for col in categorical_columns:
+        if is_geo_column(col):
+            return col
+    return None
+
+
 GENERIC_LABEL_COLUMNS = {"name", "title", "label"}
 
 
@@ -166,6 +173,29 @@ def generate_candidates(db, project_id: int, kpis: List[Dict[str, Any]]) -> List
                 category=category,
                 metric_name="Customers",
             ))
+
+        # A geographic breakdown using a place-name column already on the
+        # KPI's own table (no join needed, so it works regardless of
+        # whether the schema declares real foreign keys) — e.g.
+        # customers.region or suppliers.supplier_region. Generic keyword
+        # match, not tied to any specific dataset.
+        geo_col = _geo_column(categorical_columns)
+        if geo_col:
+            geo_label = _dimension_label(geo_col)
+            geo_sql = build_categorical_sql(sql, geo_col, limit=CATEGORICAL_FETCH_LIMIT, display_name=geo_label)
+            if geo_sql:
+                candidates.append(ChartCandidate(
+                    widget_key=f"kpi{kpi_id}_geo_{geo_col}",
+                    title=f"{name} by {geo_label}",
+                    chart_form="geographic",
+                    value_label=geo_label,
+                    sql=geo_sql,
+                    mode=mode,
+                    unit=unit,
+                    source_kpi_id=kpi_id,
+                    category=category,
+                    metric_name=name,
+                ))
 
         # Joined breakdowns onto real dimension tables (category, film,
         # store, ...) reached by following the schema's own foreign keys.
@@ -264,6 +294,26 @@ def classify_result(candidate: ChartCandidate, rows: List[Dict[str, Any]]) -> Op
             metric_name=candidate.metric_name,
         )
 
+    if candidate.chart_form == "geographic":
+        # A map reads best with a modest number of regions — beyond that
+        # a choropleth becomes visual noise, so fall back to the same
+        # top-N treatment a ranked bar chart would get.
+        rows_for_map = rows[:DISPLAY_LIMIT] if len(rows) > BAR_MAX_GROUPS else rows
+        return FinalizedChart(
+            widget_key=candidate.widget_key,
+            title=candidate.title,
+            chart_type="map",
+            chart_form="geographic",
+            value_label=candidate.value_label,
+            sql=candidate.sql,
+            mode=candidate.mode,
+            unit=candidate.unit,
+            source_kpi_id=candidate.source_kpi_id,
+            category=candidate.category,
+            rows=rows_for_map,
+            metric_name=candidate.metric_name,
+        )
+
     # Categorical: classify by how many distinct groups actually exist.
     # A small set reads well as a composition (donut); a large one is a
     # ranking (top-N, horizontal bar) — the fetch was probed one row
@@ -296,7 +346,7 @@ def classify_result(candidate: ChartCandidate, rows: List[Dict[str, Any]]) -> Op
     )
 
 
-def curate(charts: List[FinalizedChart], max_total: int = MAX_TOTAL_CHARTS) -> List[FinalizedChart]:
+def curate(charts: List[FinalizedChart], max_total: int = MAX_TOTAL_CHARTS + 1) -> List[FinalizedChart]:
     """
     Picks a visually diverse final set: at most one of each distinct
     slot where available, then fills remaining slots without repeating
@@ -326,6 +376,7 @@ def curate(charts: List[FinalizedChart], max_total: int = MAX_TOTAL_CHARTS) -> L
 
     slots = [
         ("line", "time_series"),
+        ("map", "geographic"),
         ("bar", "segmentation"),
         ("horizontal_bar", None),
         ("donut", None),

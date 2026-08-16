@@ -25,6 +25,16 @@ CATEGORICAL_NAME_KEYWORDS = [
 ]
 EXCLUDE_NAME_KEYWORDS = ["uuid", "created_at", "updated_at", "password"]
 
+# A subset of categorical columns that name an actual place, generic to
+# any schema (not tied to the demo dataset) — used to offer a geographic
+# breakdown (map chart) instead of a plain categorical one.
+GEO_NAME_KEYWORDS = ["country", "state", "region", "province", "city", "location"]
+
+
+def is_geo_column(column_name: str) -> bool:
+    name = (column_name or "").lower()
+    return any(k in name for k in GEO_NAME_KEYWORDS)
+
 
 def extract_table_name(sql: str) -> Optional[str]:
     """Extracts the first table referenced after FROM in a KPI SQL string."""

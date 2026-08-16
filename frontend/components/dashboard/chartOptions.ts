@@ -1,4 +1,5 @@
 import type { DashboardChart } from '@/lib/api';
+import { ensureUsRegionsMapRegistered } from './usRegionsGeo';
 
 // Reuses the category hues already established in KpiCard.tsx so dashboard
 // charts read as the same visual system as the KPI explorer.
@@ -186,11 +187,17 @@ export function chartRenderIssue(chart: DashboardChart): string | null {
   const hasNumericValues = points.every((p) => p.value === null || typeof p.value === 'number');
   if (!hasNumericValues) return 'non-numeric values';
 
-  if (!isTimeSeries && (chart.chart_type === 'bar' || chart.chart_type === 'horizontal_bar' || chart.chart_type === 'donut' || chart.chart_type === 'pie')) {
+  if (!isTimeSeries && (chart.chart_type === 'bar' || chart.chart_type === 'horizontal_bar' || chart.chart_type === 'donut' || chart.chart_type === 'pie' || chart.chart_type === 'map')) {
     const labels = points.map((p) => p.label || p.period || '');
     if (labels.some((l) => !l)) return 'missing category labels';
     const unique = new Set(labels);
     if (unique.size !== labels.length) return 'duplicate category labels';
+  }
+
+  if (chart.chart_type === 'map') {
+    const known = new Set(['northeast', 'midwest', 'south', 'southwest', 'west']);
+    const recognized = points.some((p) => known.has((p.label || '').toLowerCase()));
+    if (!recognized) return 'no recognized geographic regions in this data';
   }
 
   if (points.length === 1 && chart.chart_type !== 'donut' && chart.chart_type !== 'pie') {
@@ -390,6 +397,56 @@ export function buildChartOption(chart: DashboardChart, chartType: string): Reco
     };
   }
 
+  if (chartType === 'map') {
+    const mapName = ensureUsRegionsMapRegistered();
+    const data = points.map((p, i) => ({
+      name: p.label || `Region ${i + 1}`,
+      value: toNumber(p.value),
+    }));
+    const values = data.map((d) => d.value);
+    const max = Math.max(...values, 1);
+
+    return {
+      tooltip: {
+        trigger: 'item',
+        ...TOOLTIP_BASE,
+        formatter: (params: unknown) => {
+          const p = params as { name?: string; value?: number };
+          const val = toNumber(p.value);
+          return `${p.name}<br/>${seriesName}: <b>${formatValue(val, unit)}${unitSuffix(unit)}</b>`;
+        },
+      },
+      visualMap: {
+        min: 0,
+        max,
+        left: 'left',
+        bottom: 6,
+        text: ['High', 'Low'],
+        textStyle: { color: 'rgba(226, 232, 240, 0.55)', fontSize: 10 },
+        calculable: false,
+        itemWidth: 10,
+        itemHeight: 70,
+        inRange: { color: ['#131c2c', color] },
+      },
+      series: [
+        {
+          name: seriesName,
+          type: 'map',
+          map: mapName,
+          roam: false,
+          silent: false,
+          label: { show: true, color: 'rgba(244, 244, 245, 0.85)', fontSize: 10 },
+          itemStyle: { borderColor: '#080d16', borderWidth: 1.5 },
+          emphasis: {
+            label: { color: '#f4f4f5' },
+            itemStyle: { areaColor: color },
+          },
+          data,
+        },
+      ],
+    };
+  }
+
   return {};
 }
 
@@ -400,6 +457,7 @@ export const CHART_TYPE_LABELS: Record<string, string> = {
   donut: 'Donut',
   pie: 'Pie',
   area: 'Area',
+  map: 'Map',
   table: 'Table',
 };
 
@@ -411,5 +469,14 @@ export function allowedChartTypesFor(chart: DashboardChart): string[] {
   // Line/area only make sense for a genuine time-ordered series — a
   // categorical breakdown (by store, by category, ...) isn't a trend.
   if (chart.chart_form === 'time_series') types.unshift('area', 'line');
+  // Map only makes sense when the breakdown is actually geographic (or
+  // for a saved-query widget, when the data itself resolves to known
+  // regions) — offering it for an arbitrary categorical breakdown like
+  // "by status" would just render an all-grey map.
+  const known = new Set(['northeast', 'midwest', 'south', 'southwest', 'west']);
+  const looksGeographic =
+    chart.chart_form === 'geographic' ||
+    (chart.chart_data || []).some((p) => known.has((p.label || '').toLowerCase()));
+  if (looksGeographic) types.push('map');
   return Array.from(new Set(types));
 }
