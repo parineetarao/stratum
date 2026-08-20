@@ -185,4 +185,39 @@ RETAIL_KPIS = [
         ],
         "date_required": False,
     },
+    {
+        "name": "Inventory Value",
+        "description": (
+            "Total monetary value of current inventory or stock on hand. "
+            "Measures capital tied up in unsold goods."
+        ),
+        "category": "Inventory",
+        "unit": "currency",
+        "requires_fact_table": False,
+        "table_keywords": ["inventory", "stock", "warehouse_stock"],
+        "measure_keywords": [
+            "value", "cost", "price", "amount", "stock_value"
+        ],
+        "measure_type": "numeric",
+        "aggregation": "SUM",
+        "identifier_keywords": None,
+        "date_required": False,
+    },
+    {
+        "name": "Order Cancellation Rate",
+        "description": (
+            "Percentage of orders marked as cancelled. "
+            "Indicates fulfillment or customer-satisfaction issues."
+        ),
+        "category": "Quality",
+        "unit": "percentage",
+        "requires_fact_table": True,
+        "measure_keywords": None,
+        "measure_type": None,
+        "aggregation": "CONDITIONAL_RATE",
+        "identifier_keywords": None,
+        "status_keywords": ["order_status", "status"],
+        "target_value_aliases": ["cancelled", "canceled", "cancel"],
+        "date_required": False,
+    },
 ]

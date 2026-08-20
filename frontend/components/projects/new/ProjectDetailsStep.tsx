@@ -8,6 +8,10 @@ const DOMAIN_LABELS: Record<ProjectDomain, string> = {
   healthcare: 'Healthcare',
   manufacturing: 'Manufacturing',
   logistics: 'Logistics',
+  education: 'Education',
+  ecommerce: 'E-commerce',
+  saas: 'SaaS',
+  telecommunications: 'Telecommunications',
 };
 
 const fieldLabelStyle: CSSProperties = {

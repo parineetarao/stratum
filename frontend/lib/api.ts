@@ -205,6 +205,10 @@ export const PROJECT_DOMAINS = [
   'healthcare',
   'manufacturing',
   'logistics',
+  'education',
+  'ecommerce',
+  'saas',
+  'telecommunications',
 ] as const;
 
 export type ProjectDomain = (typeof PROJECT_DOMAINS)[number];

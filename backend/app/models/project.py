@@ -13,6 +13,10 @@ class DomainEnum(str, enum.Enum):
     healthcare = "healthcare"
     manufacturing = "manufacturing"
     logistics = "logistics"
+    education = "education"
+    ecommerce = "ecommerce"
+    saas = "saas"
+    telecommunications = "telecommunications"
 
 class AnalysisMode(str, enum.Enum):
     source = "source"

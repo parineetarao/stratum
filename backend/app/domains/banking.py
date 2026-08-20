@@ -85,6 +85,23 @@ BANKING_KPIS = [
         "date_required": False,
     },
     {
+        "name": "Minimum Transaction Amount",
+        "description": (
+            "Lowest individual transaction amount. "
+            "Useful for detecting micro-transactions or data anomalies."
+        ),
+        "category": "Risk",
+        "unit": "currency",
+        "requires_fact_table": True,
+        "measure_keywords": [
+            "amount", "value", "balance", "debit", "credit"
+        ],
+        "measure_type": "numeric",
+        "aggregation": "MIN",
+        "identifier_keywords": None,
+        "date_required": False,
+    },
+    {
         "name": "Total Accounts",
         "description": (
             "Total number of accounts in the system. "
@@ -103,6 +120,78 @@ BANKING_KPIS = [
         "identifier_keywords": [
             "account_id", "acct_id", "customer_id", "client_id"
         ],
+        "date_required": False,
+    },
+    {
+        "name": "Average Balance Per Account",
+        "description": (
+            "Average transaction balance attributed to each unique account. "
+            "Indicates typical account-level activity."
+        ),
+        "category": "Volume",
+        "unit": "currency",
+        "requires_fact_table": True,
+        "measure_keywords": [
+            "balance", "amount", "value"
+        ],
+        "measure_type": "numeric",
+        "aggregation": "SUM_PER_DISTINCT",
+        "identifier_keywords": [
+            "account_id", "acct_id", "customer_id"
+        ],
+        "date_required": False,
+    },
+    {
+        "name": "Transactions Per Account",
+        "description": (
+            "Average number of transactions per account. "
+            "Measures account engagement frequency."
+        ),
+        "category": "Volume",
+        "unit": "count",
+        "requires_fact_table": True,
+        "measure_keywords": None,
+        "measure_type": None,
+        "aggregation": "COUNT_PER_DISTINCT",
+        "identifier_keywords": [
+            "account_id", "acct_id", "customer_id"
+        ],
+        "date_required": False,
+    },
+    {
+        "name": "Total Loan Amount",
+        "description": (
+            "Total principal amount across all loans issued. "
+            "Measures lending portfolio size."
+        ),
+        "category": "Risk",
+        "unit": "currency",
+        "requires_fact_table": False,
+        "table_keywords": ["loan", "lending", "credit_facility"],
+        "measure_keywords": [
+            "loan_amount", "principal", "amount", "value"
+        ],
+        "measure_type": "numeric",
+        "aggregation": "SUM",
+        "identifier_keywords": None,
+        "date_required": False,
+    },
+    {
+        "name": "Loan Default Rate",
+        "description": (
+            "Percentage of loans marked as defaulted. "
+            "Key credit-risk indicator for the lending portfolio."
+        ),
+        "category": "Risk",
+        "unit": "percentage",
+        "requires_fact_table": False,
+        "table_keywords": ["loan", "lending", "credit_facility"],
+        "measure_keywords": None,
+        "measure_type": None,
+        "aggregation": "CONDITIONAL_RATE",
+        "identifier_keywords": None,
+        "status_keywords": ["loan_status", "status"],
+        "target_value_aliases": ["default", "defaulted"],
         "date_required": False,
     },
 ]

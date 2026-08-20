@@ -178,6 +178,67 @@ def find_best_null_column(
     return best_col if best_score >= 50 else None
 
 
+def find_best_status_column(
+    table: Dict[str, Any],
+    status_keywords: List[str]
+) -> Optional[str]:
+    """Locates a status/flag column by keyword, same scoring rules as
+    identifier columns (no numeric/PK/FK restriction, since status columns
+    are typically text or code fields)."""
+    return find_best_identifier_column(table, status_keywords)
+
+
+def normalize_status_value(value: Any) -> str:
+    return str(value).strip().lower()
+
+
+def match_target_value(
+    observed_values: List[Any],
+    target_value_aliases: List[str]
+) -> Optional[Any]:
+    """Matches observed distinct column values against an explicit alias
+    list using an exact, case/whitespace-normalized comparison only.
+    Returns the raw observed value (preserving its original casing) so the
+    generated SQL filters on the value as it actually exists in the data.
+    No fuzzy/partial matching is performed - if none of the observed values
+    normalize to one of the known aliases, this returns None and the caller
+    must skip the KPI rather than guess.
+    """
+    normalized_aliases = {normalize_status_value(a) for a in target_value_aliases}
+    for raw in observed_values:
+        if raw is None:
+            continue
+        if normalize_status_value(raw) in normalized_aliases:
+            return raw
+    return None
+
+
+def get_distinct_column_values(
+    table_name: str,
+    column: str,
+    mode: str,
+    project_id: int,
+    connector,
+    limit: int = 20
+) -> List[Any]:
+    """Dedicated helper for discovering a small sample of distinct values in
+    a column. Kept separate from execute_kpi_sql, which is scoped to
+    returning a single scalar KPI value and should not be reused for
+    multi-row lookups."""
+    sql = f"SELECT DISTINCT {column} as value FROM {table_name} LIMIT {limit}"
+    try:
+        if mode == "warehouse":
+            from app.engine.sandbox_engine import run_query_in_sandbox
+            df = run_query_in_sandbox(project_id, sql)
+        else:
+            df = connector.run_query(sql)
+        if df is not None and "value" in df.columns:
+            return [v for v in df["value"].tolist() if v is not None]
+        return []
+    except Exception:
+        return []
+
+
 def get_table_name_for_mode(
     table: Dict[str, Any],
     mode: str
@@ -195,7 +256,9 @@ def generate_kpi_sql(
     mode: str,
     measure_col: Optional[str] = None,
     identifier_col: Optional[str] = None,
-    null_col: Optional[str] = None
+    null_col: Optional[str] = None,
+    status_col: Optional[str] = None,
+    target_value: Optional[Any] = None
 ) -> Optional[str]:
     table_name = get_table_name_for_mode(table, mode)
     if not table_name:
@@ -271,6 +334,17 @@ def generate_kpi_sql(
         return (
             f"SELECT ROUND("
             f"COUNT(CASE WHEN {null_col} IS NULL THEN 1 END)::NUMERIC / "
+            f"NULLIF(COUNT(*), 0) * 100"
+            f", 2) as value FROM {table_name}"
+        )
+
+    elif agg == "CONDITIONAL_RATE":
+        if not status_col or target_value is None:
+            return None
+        escaped_value = str(target_value).replace("'", "''")
+        return (
+            f"SELECT ROUND("
+            f"COUNT(CASE WHEN {status_col} = '{escaped_value}' THEN 1 END)::NUMERIC / "
             f"NULLIF(COUNT(*), 0) * 100"
             f", 2) as value FROM {table_name}"
         )
@@ -386,6 +460,8 @@ def recommend_kpis(
             measure_col = None
             identifier_col = None
             null_col = None
+            status_col = None
+            target_value = None
 
             if kpi_def.get("requires_fact_table", True):
                 if not best_fact:
@@ -454,9 +530,26 @@ def recommend_kpis(
                 if agg == "NULL_RATE" and not null_col:
                     continue
 
+            if agg == "CONDITIONAL_RATE":
+                status_keywords = kpi_def.get("status_keywords")
+                target_value_aliases = kpi_def.get("target_value_aliases")
+                if not status_keywords or not target_value_aliases:
+                    continue
+                status_col = find_best_status_column(table_for_columns, status_keywords)
+                if not status_col:
+                    continue
+                query_table_name = get_table_name_for_mode(target_table, mode)
+                observed_values = get_distinct_column_values(
+                    query_table_name, status_col, mode, project_id, connector
+                )
+                target_value = match_target_value(observed_values, target_value_aliases)
+                if target_value is None:
+                    continue
+
             sql = generate_kpi_sql(
                 kpi_def, target_table, mode,
-                measure_col, identifier_col, null_col
+                measure_col, identifier_col, null_col,
+                status_col, target_value
             )
             if not sql:
                 continue
@@ -472,16 +565,27 @@ def recommend_kpis(
                     identifier_col, kpi_def.get("identifier_keywords", [])
                 )
                 confidence = min(confidence, score)
+            if status_col and kpi_def.get("status_keywords"):
+                score = column_matches_keywords(
+                    status_col, kpi_def.get("status_keywords", [])
+                )
+                confidence = min(confidence, score)
 
             value = execute_kpi_sql(sql, mode, project_id, connector)
             formatted_value = format_kpi_value(value, kpi_def.get("unit"))
 
             tname = get_table_name_for_mode(target_table, mode)
-            col_used = measure_col or identifier_col or null_col
-            reasoning = (
-                f"Recommended because {tname}.{col_used or 'rows'} is a numeric measure "
-                f"or key linked to {domain} metrics."
-            )
+            col_used = measure_col or identifier_col or null_col or status_col
+            if agg == "CONDITIONAL_RATE":
+                reasoning = (
+                    f"Recommended because {tname}.{status_col} contains an observed "
+                    f"value matching '{target_value}', linked to {domain} metrics."
+                )
+            else:
+                reasoning = (
+                    f"Recommended because {tname}.{col_used or 'rows'} is a numeric measure "
+                    f"or key linked to {domain} metrics."
+                )
             evidence = {
                 "table_name": tname,
                 "column_used": col_used,
@@ -489,6 +593,8 @@ def recommend_kpis(
                 "match_score": confidence,
                 "mode": mode
             }
+            if agg == "CONDITIONAL_RATE":
+                evidence["target_value"] = target_value
 
             recommendations.append({
                 "name": kpi_def["name"],
