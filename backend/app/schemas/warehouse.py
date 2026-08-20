@@ -96,6 +96,22 @@ class AggregationValidation(BaseModel):
     error: Optional[str] = None
 
 
+class SurrogateKeyValidation(BaseModel):
+    check: str  # "dw_id_uniqueness" | "natural_key_uniqueness" |
+                # "unmapped_surrogate_key" | "orphan_surrogate_key_reference"
+    table: Optional[str] = None
+    fact_table: Optional[str] = None
+    dimension_table: Optional[str] = None
+    foreign_key_column: Optional[str] = None
+    surrogate_key_column: Optional[str] = None
+    natural_key: Optional[List[str]] = None
+    unmapped_count: Optional[int] = None
+    orphan_count: Optional[int] = None
+    status: str  # "passed" | "warning" | "error"
+    detail: Optional[str] = None
+    error: Optional[str] = None
+
+
 class WarehousePreviewResponse(BaseModel):
     project_id: int
     status: str  # "success" | "warning" | "failed"
@@ -103,4 +119,5 @@ class WarehousePreviewResponse(BaseModel):
     tables_created: List[WarehouseTableResult]
     join_validations: List[JoinValidation]
     aggregation_validations: List[AggregationValidation]
+    surrogate_key_validations: List[SurrogateKeyValidation] = []
     execution_time_ms: int

@@ -166,7 +166,8 @@ def refresh_sandbox_warehouse(
             project_id,
             connector,
             source_table_names,
-            warehouse_table_names
+            warehouse_table_names,
+            design.full_ddl_duckdb if design else None
         )
     except Exception as e:
         raise HTTPException(
@@ -275,7 +276,8 @@ def schedule_warehouse_refresh(
             warehouse_names = design.warehouse_table_names or [] if design else []
 
             refresh_warehouse_data(
-                project_id, connector, source_names, warehouse_names
+                project_id, connector, source_names, warehouse_names,
+                design.full_ddl_duckdb if design else None
             )
         finally:
             job_db.close()

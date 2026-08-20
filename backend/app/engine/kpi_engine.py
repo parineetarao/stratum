@@ -45,6 +45,20 @@ def is_numeric(col_type: str) -> bool:
     return normalize_type(col_type) in NUMERIC_TYPES
 
 
+def is_warehouse_technical_key(col_name: Optional[str]) -> bool:
+    """
+    Identifies warehouse-generated technical key columns (the dw_id
+    surrogate key on dimension tables, and dw_<table>_key foreign-key
+    columns on fact tables added by warehouse_designer.py). These are
+    plumbing, not business measures - a numeric column like dw_id or
+    dw_customer_key must never be recommended as a SUM/AVG/MAX/MIN KPI.
+    """
+    if not col_name or not isinstance(col_name, str):
+        return False
+    name = col_name.lower()
+    return name == "dw_id" or (name.startswith("dw_") and name.endswith("_key"))
+
+
 def column_matches_keywords(col_name: Optional[str], keywords: List[str]) -> int:
     if not col_name or not isinstance(col_name, str):
         return 0
@@ -131,6 +145,8 @@ def find_best_measure_column(
         if col.get("foreign_key") or col.get("foreign_key_info"):
             continue
         col_name = col.get("name") or col.get("column_name", "")
+        if is_warehouse_technical_key(col_name):
+            continue
         score = column_matches_keywords(col_name, measure_keywords)
         if score > best_score:
             best_score = score

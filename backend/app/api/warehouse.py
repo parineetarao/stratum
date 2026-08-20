@@ -12,7 +12,8 @@ from app.schemas.warehouse import (
     FactTableDesign, DimensionTableDesign,
     MeasureColumn, DimensionColumn, ForeignKeyRef,
     WarehouseClassificationOverride, WarehousePreviewResponse,
-    WarehouseTableResult, JoinValidation, AggregationValidation
+    WarehouseTableResult, JoinValidation, AggregationValidation,
+    SurrogateKeyValidation
 )
 from typing import Optional
 from app.api.deps import get_current_user, get_optional_user, get_project_for_access, ensure_project_is_mutable
@@ -361,12 +362,17 @@ def preview_warehouse(
     aggregation_validations = [
         AggregationValidation(**a) for a in validation["aggregation_validations"]
     ]
+    surrogate_key_validations = [
+        SurrogateKeyValidation(**s) for s in validation.get("surrogate_key_validations", [])
+    ]
 
     status = "success"
     if any(j.status == "error" for j in join_validations) or \
-       any(a.status == "error" for a in aggregation_validations):
+       any(a.status == "error" for a in aggregation_validations) or \
+       any(s.status == "error" for s in surrogate_key_validations):
         status = "failed"
-    elif any(j.status == "warning" for j in join_validations):
+    elif any(j.status == "warning" for j in join_validations) or \
+         any(s.status == "warning" for s in surrogate_key_validations):
         status = "warning"
 
     return WarehousePreviewResponse(
@@ -376,5 +382,6 @@ def preview_warehouse(
         tables_created=tables_created,
         join_validations=join_validations,
         aggregation_validations=aggregation_validations,
+        surrogate_key_validations=surrogate_key_validations,
         execution_time_ms=execution_time_ms
     )

@@ -153,12 +153,24 @@ def refresh_warehouse_data(
     project_id: int,
     connector: BaseConnector,
     source_tables: List[str],
-    warehouse_table_names: List[str]
+    warehouse_table_names: List[str],
+    warehouse_ddl: Any = None
 ) -> Dict[str, Any]:
     """
-    Refreshes warehouse table data without changing schema.
-    For each warehouse table, truncates and repopulates from source.
-    Source tables are also refreshed with latest data.
+    Refreshes source table data, then rebuilds warehouse (fact_/dim_)
+    tables from the same DDL used to originally construct them.
+
+    Warehouse tables are no longer patched in place with a plain
+    `INSERT ... SELECT *`: since dimension tables are deduplicated and
+    carry a generated dw_id surrogate key, and fact tables carry extra
+    dw_<table>_key columns, a positional INSERT against the differently
+    shaped source table would corrupt data (or fail outright on column
+    count). Re-running the stored CREATE TABLE AS SELECT DDL instead
+    guarantees the refreshed warehouse tables go through the exact same
+    deduplication/surrogate-key/rewiring logic as the original build, so
+    dw_id assignments and fact surrogate keys stay consistent with the
+    current data. warehouse_ddl is the design's full_ddl_duckdb string;
+    if omitted (no design generated yet), only source tables are refreshed.
     """
     path = get_sandbox_path(project_id)
     if not os.path.exists(path):
@@ -179,23 +191,14 @@ def refresh_warehouse_data(
             )
             conn.unregister(f"_temp_{table_name}")
             refreshed.append(table_name)
-        except Exception as e:
+        except Exception:
             pass
 
-    for wt in warehouse_table_names:
-        source_name = wt.replace("fact_", "").replace("dim_", "")
-        if source_name in source_tables:
-            try:
-                conn.execute(f"DELETE FROM {wt}")
-                conn.execute(
-                    f"INSERT INTO {wt} "
-                    f"SELECT * FROM {source_name}"
-                )
-                refreshed.append(wt)
-            except Exception:
-                pass
-
     conn.close()
+
+    if warehouse_ddl:
+        ddl_result = execute_warehouse_ddl(project_id, warehouse_ddl)
+        refreshed.extend(ddl_result.get("warehouse_tables_created", []))
 
     return {
         "refreshed_tables": refreshed,
@@ -370,10 +373,135 @@ def validate_warehouse(
                     "error": str(e)
                 })
 
+    surrogate_key_validations = []
+
+    # A. Dimension surrogate key (dw_id) uniqueness.
+    for dt in dimension_tables:
+        dim_wt = dt["warehouse_table"]
+        try:
+            total = conn.execute(f"SELECT COUNT(*) FROM {dim_wt}").fetchone()[0]
+            distinct = conn.execute(
+                f"SELECT COUNT(DISTINCT dw_id) FROM {dim_wt}"
+            ).fetchone()[0]
+            surrogate_key_validations.append({
+                "check": "dw_id_uniqueness",
+                "table": dim_wt,
+                "status": "passed" if total == distinct else "error",
+                "detail": f"{distinct} distinct dw_id out of {total} rows"
+            })
+        except Exception as e:
+            surrogate_key_validations.append({
+                "check": "dw_id_uniqueness",
+                "table": dim_wt,
+                "status": "error",
+                "error": str(e)
+            })
+
+    # B. Natural-key uniqueness (only when a natural key was identified;
+    # dimensions built without one were intentionally not deduplicated).
+    for dt in dimension_tables:
+        dim_wt = dt["warehouse_table"]
+        natural_key = dt.get("natural_key") or []
+        if not natural_key:
+            surrogate_key_validations.append({
+                "check": "natural_key_uniqueness",
+                "table": dim_wt,
+                "status": "warning",
+                "detail": (
+                    "No reliable natural key was identified for this "
+                    "dimension, so it was not deduplicated."
+                )
+            })
+            continue
+        try:
+            nk_cols = ", ".join(natural_key)
+            total = conn.execute(f"SELECT COUNT(*) FROM {dim_wt}").fetchone()[0]
+            distinct = conn.execute(
+                f"SELECT COUNT(*) FROM (SELECT DISTINCT {nk_cols} FROM {dim_wt}) t"
+            ).fetchone()[0]
+            surrogate_key_validations.append({
+                "check": "natural_key_uniqueness",
+                "table": dim_wt,
+                "natural_key": natural_key,
+                "status": "passed" if total == distinct else "error",
+                "detail": f"{distinct} distinct natural key values out of {total} rows"
+            })
+        except Exception as e:
+            surrogate_key_validations.append({
+                "check": "natural_key_uniqueness",
+                "table": dim_wt,
+                "status": "error",
+                "error": str(e)
+            })
+
+    # C. Orphan fact references: every non-null dw_<table>_key value should
+    # exist in the referenced dimension's dw_id.
+    # D. Missing mappings: fact rows where the original source FK was set
+    # but no surrogate key could be resolved (dimension row not found).
+    for ft in fact_tables:
+        fact_wt = ft["warehouse_table"]
+        for link in ft.get("surrogate_key_joins", []):
+            fk_col = link["column_name"]
+            dw_key_col = link["dw_key_name"]
+            dim_wt = link["warehouse_table"]
+            try:
+                unmapped = conn.execute(
+                    f"SELECT COUNT(*) FROM {fact_wt} "
+                    f"WHERE {fk_col} IS NOT NULL AND {dw_key_col} IS NULL"
+                ).fetchone()[0]
+                surrogate_key_validations.append({
+                    "check": "unmapped_surrogate_key",
+                    "fact_table": fact_wt,
+                    "dimension_table": dim_wt,
+                    "foreign_key_column": fk_col,
+                    "surrogate_key_column": dw_key_col,
+                    "unmapped_count": unmapped,
+                    "status": "passed" if unmapped == 0 else "warning",
+                    "detail": (
+                        f"{unmapped} {fact_wt} rows have a non-null {fk_col} "
+                        f"but could not be mapped to {dim_wt}.dw_id"
+                        if unmapped else None
+                    )
+                })
+            except Exception as e:
+                surrogate_key_validations.append({
+                    "check": "unmapped_surrogate_key",
+                    "fact_table": fact_wt,
+                    "dimension_table": dim_wt,
+                    "foreign_key_column": fk_col,
+                    "surrogate_key_column": dw_key_col,
+                    "status": "error",
+                    "error": str(e)
+                })
+            try:
+                orphan_count = conn.execute(
+                    f"SELECT COUNT(*) FROM {fact_wt} f "
+                    f"LEFT JOIN {dim_wt} d ON f.{dw_key_col} = d.dw_id "
+                    f"WHERE f.{dw_key_col} IS NOT NULL AND d.dw_id IS NULL"
+                ).fetchone()[0]
+                surrogate_key_validations.append({
+                    "check": "orphan_surrogate_key_reference",
+                    "fact_table": fact_wt,
+                    "dimension_table": dim_wt,
+                    "surrogate_key_column": dw_key_col,
+                    "orphan_count": orphan_count,
+                    "status": "passed" if orphan_count == 0 else "error"
+                })
+            except Exception as e:
+                surrogate_key_validations.append({
+                    "check": "orphan_surrogate_key_reference",
+                    "fact_table": fact_wt,
+                    "dimension_table": dim_wt,
+                    "surrogate_key_column": dw_key_col,
+                    "status": "error",
+                    "error": str(e)
+                })
+
     conn.close()
 
     return {
         "row_counts": row_counts,
         "join_validations": join_validations,
-        "aggregation_validations": aggregation_validations
+        "aggregation_validations": aggregation_validations,
+        "surrogate_key_validations": surrogate_key_validations
     }

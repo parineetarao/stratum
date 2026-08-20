@@ -262,95 +262,219 @@ def recommend_schema_type(
 WAREHOUSE_SCHEMA = "stratum_warehouse"
 
 
+def build_surrogate_key_joins(
+    foreign_keys: List[Dict[str, Any]],
+    dim_warehouse_names: Dict[str, str]
+) -> List[Dict[str, str]]:
+    """
+    Selects, from a fact table's identified foreign keys, only the ones
+    that point to a dimension table built by this warehouse design (not
+    another fact table - a galaxy-schema fact-to-fact reference has no
+    dw_id to rewire to and is left untouched).
+
+    Each entry drives one LEFT JOIN ... dw_id AS dw_<table>_key in the
+    generated fact DDL. This uses only foreign-key metadata already
+    present on the discovered schema (real DB constraints, or user-
+    accepted inferred relationships promoted via relationships.py) -
+    no new relationship inference happens here.
+    """
+    joins: List[Dict[str, str]] = []
+    used_names = set()
+    for fk in foreign_keys:
+        references_table = fk.get("references_table")
+        column_name = fk.get("column_name")
+        references_column = fk.get("references_column")
+        if not references_table or not column_name or not references_column:
+            continue
+        if references_table not in dim_warehouse_names:
+            # Points at a fact table (galaxy schema) or an unclassified
+            # table - no dimension dw_id exists to rewire to.
+            continue
+
+        dw_key_name = f"dw_{references_table}_key"
+        if dw_key_name in used_names:
+            # A fact table with two FKs into the same dimension (e.g.
+            # ship_from/ship_to) needs distinguishable key names.
+            dw_key_name = f"dw_{references_table}_{column_name}_key"
+        used_names.add(dw_key_name)
+
+        joins.append({
+            "column_name": column_name,
+            "references_table": references_table,
+            "warehouse_table": dim_warehouse_names[references_table],
+            "references_column": references_column,
+            "dw_key_name": dw_key_name,
+        })
+    return joins
+
+
+def _dimension_select_body(
+    table: Dict[str, Any],
+    natural_key_columns: Optional[List[str]]
+) -> str:
+    """
+    Builds the SELECT body (no CREATE TABLE header) for a dimension table.
+
+    When a natural key is available, deduplicates rows by that key -
+    keeping one row per distinct key value - and assigns a stable dw_id
+    surrogate key ordered by the natural key. When no natural key could
+    be confidently identified, no deduplication is performed (merging
+    rows without a trustworthy key risks silently combining distinct
+    records), and dw_id is simply assigned per existing row.
+    """
+    source_table = table["table_name"]
+    col_names = [col["name"] for col in table["columns"]]
+    col_list = ",\n        ".join(col_names)
+
+    if natural_key_columns:
+        nk = ", ".join(natural_key_columns)
+        outer_cols = ",\n    ".join(col_names)
+        return (
+            f"SELECT\n"
+            f"    ROW_NUMBER() OVER (ORDER BY {nk}) AS dw_id,\n"
+            f"    {outer_cols},\n"
+            f"    CURRENT_TIMESTAMP as dw_created_at,\n"
+            f"    CURRENT_TIMESTAMP as dw_updated_at\n"
+            f"FROM (\n"
+            f"    SELECT\n"
+            f"        {col_list},\n"
+            f"        ROW_NUMBER() OVER (PARTITION BY {nk} ORDER BY {nk}) "
+            f"AS _dw_dedup_rank\n"
+            f"    FROM {source_table}\n"
+            f") _dw_deduped\n"
+            f"WHERE _dw_dedup_rank = 1"
+        )
+
+    # Fallback: no reliable natural key identified for this table. Assign
+    # a surrogate key per row without deduplication rather than guess.
+    outer_cols = ",\n    ".join(col_names)
+    return (
+        f"SELECT\n"
+        f"    ROW_NUMBER() OVER () AS dw_id,\n"
+        f"    {outer_cols},\n"
+        f"    CURRENT_TIMESTAMP as dw_created_at,\n"
+        f"    CURRENT_TIMESTAMP as dw_updated_at\n"
+        f"FROM {source_table}"
+    )
+
+
+def _fact_select_body(
+    table: Dict[str, Any],
+    surrogate_key_joins: List[Dict[str, str]],
+    dim_table_prefix: str = ""
+) -> str:
+    """
+    Builds the SELECT body (no CREATE TABLE header) for a fact table.
+    All original source columns (including the original natural-key FK
+    columns, e.g. customer_id) are preserved unchanged for backward
+    compatibility. One dw_<table>_key column is appended per resolved
+    surrogate_key_joins entry, populated via LEFT JOIN from the fact's
+    original FK column to the dimension's natural key, resolving to the
+    dimension's dw_id. dim_table_prefix allows qualifying the joined
+    dimension table with a schema (PostgreSQL) when needed.
+    """
+    source_table = table["table_name"]
+    alias = "src"
+    col_selections = [f"    {alias}.{col['name']}" for col in table["columns"]]
+
+    join_clauses = []
+    surrogate_selections = []
+    for i, link in enumerate(surrogate_key_joins):
+        dim_alias = f"_dwjoin_{i}"
+        dim_table = f"{dim_table_prefix}{link['warehouse_table']}"
+        join_clauses.append(
+            f"LEFT JOIN {dim_table} AS {dim_alias} "
+            f"ON {alias}.{link['column_name']} = {dim_alias}.{link['references_column']}"
+        )
+        surrogate_selections.append(f"    {dim_alias}.dw_id AS {link['dw_key_name']}")
+
+    all_selections = col_selections + surrogate_selections
+    cols_str = ",\n".join(all_selections)
+    join_str = ("\n" + "\n".join(join_clauses)) if join_clauses else ""
+
+    return f"SELECT\n{cols_str}\nFROM {source_table} AS {alias}{join_str}"
+
+
 def generate_dimension_ddl_postgres(
     table: Dict[str, Any],
     warehouse_table_name: str,
-    source_schema: str = "public"
+    source_schema: str = "public",
+    natural_key_columns: Optional[List[str]] = None
 ) -> str:
     """
     Generates CREATE TABLE AS SELECT for PostgreSQL deployment.
     Uses stratum_warehouse schema for warehouse tables.
     References source schema explicitly.
+    Deduplicates by natural_key_columns and assigns a dw_id surrogate key
+    (see _dimension_select_body).
     """
-    source_table = table["table_name"]
-    col_selections = [
-        f"    {col['name']}" for col in table["columns"]
-    ]
-    col_selections.append("    CURRENT_TIMESTAMP as dw_created_at")
-    col_selections.append("    CURRENT_TIMESTAMP as dw_updated_at")
-    cols_str = ",\n".join(col_selections)
-
+    body = _dimension_select_body(table, natural_key_columns).replace(
+        f"FROM {table['table_name']}", f"FROM {source_schema}.{table['table_name']}"
+    )
     return (
         f"CREATE TABLE {WAREHOUSE_SCHEMA}.{warehouse_table_name} AS\n"
-        f"SELECT\n{cols_str}\n"
-        f"FROM {source_schema}.{source_table};"
+        f"{body};"
     )
 
 
 def generate_fact_ddl_postgres(
     table: Dict[str, Any],
     warehouse_table_name: str,
-    source_schema: str = "public"
+    source_schema: str = "public",
+    surrogate_key_joins: Optional[List[Dict[str, str]]] = None
 ) -> str:
     """
     Generates CREATE TABLE AS SELECT for PostgreSQL deployment.
+    Appends dw_<table>_key surrogate FK columns (see _fact_select_body).
     """
-    source_table = table["table_name"]
-    col_selections = [
-        f"    {col['name']}" for col in table["columns"]
-    ]
-    col_selections.append("    CURRENT_TIMESTAMP as dw_created_at")
-    cols_str = ",\n".join(col_selections)
-
+    body = _fact_select_body(
+        table, surrogate_key_joins or [], dim_table_prefix=f"{WAREHOUSE_SCHEMA}."
+    ).replace(
+        f"FROM {table['table_name']} AS src",
+        f"FROM {source_schema}.{table['table_name']} AS src"
+    )
+    select_part, from_part = body.split("\nFROM ", 1)
     return (
         f"CREATE TABLE {WAREHOUSE_SCHEMA}.{warehouse_table_name} AS\n"
-        f"SELECT\n{cols_str}\n"
-        f"FROM {source_schema}.{source_table};"
+        f"{select_part},\n    CURRENT_TIMESTAMP as dw_created_at\n"
+        f"FROM {from_part};"
     )
 
 
 def generate_dimension_ddl_duckdb(
     table: Dict[str, Any],
-    warehouse_table_name: str
+    warehouse_table_name: str,
+    natural_key_columns: Optional[List[str]] = None
 ) -> str:
     """
     Generates CREATE TABLE AS SELECT for DuckDB sandbox.
     No schema prefix — DuckDB uses a flat namespace per file.
     Source table already exists in DuckDB as a copy.
+    Deduplicates by natural_key_columns and assigns a dw_id surrogate key
+    (see _dimension_select_body).
     """
-    source_table = table["table_name"]
-    col_selections = [
-        f"    {col['name']}" for col in table["columns"]
-    ]
-    col_selections.append("    CURRENT_TIMESTAMP as dw_created_at")
-    col_selections.append("    CURRENT_TIMESTAMP as dw_updated_at")
-    cols_str = ",\n".join(col_selections)
-
+    body = _dimension_select_body(table, natural_key_columns)
     return (
         f"CREATE TABLE IF NOT EXISTS {warehouse_table_name} AS\n"
-        f"SELECT\n{cols_str}\n"
-        f"FROM {source_table};"
+        f"{body};"
     )
 
 
 def generate_fact_ddl_duckdb(
     table: Dict[str, Any],
-    warehouse_table_name: str
+    warehouse_table_name: str,
+    surrogate_key_joins: Optional[List[Dict[str, str]]] = None
 ) -> str:
     """
     Generates CREATE TABLE AS SELECT for DuckDB sandbox.
+    Appends dw_<table>_key surrogate FK columns (see _fact_select_body).
     """
-    source_table = table["table_name"]
-    col_selections = [
-        f"    {col['name']}" for col in table["columns"]
-    ]
-    col_selections.append("    CURRENT_TIMESTAMP as dw_created_at")
-    cols_str = ",\n".join(col_selections)
-
+    body = _fact_select_body(table, surrogate_key_joins or [])
+    select_part, from_part = body.split("\nFROM ", 1)
     return (
         f"CREATE TABLE IF NOT EXISTS {warehouse_table_name} AS\n"
-        f"SELECT\n{cols_str}\n"
-        f"FROM {source_table};"
+        f"{select_part},\n    CURRENT_TIMESTAMP as dw_created_at\n"
+        f"FROM {from_part};"
     )
 
 
@@ -373,6 +497,10 @@ def generate_constraints_postgres(
                 f"ALTER TABLE {WAREHOUSE_SCHEMA}.{wt} "
                 f"ADD PRIMARY KEY ({', '.join(pk_cols)});"
             )
+        lines.append(
+            f"CREATE UNIQUE INDEX idx_{wt}_dwid "
+            f"ON {WAREHOUSE_SCHEMA}.{wt}(dw_id);"
+        )
 
     for ft in fact_tables:
         wt = fact_warehouse_names[ft["table_name"]]
@@ -430,6 +558,9 @@ def generate_constraints_duckdb(
                 f"CREATE UNIQUE INDEX idx_{wt}_pk "
                 f"ON {wt}({', '.join(pk_cols)});"
             )
+        lines.append(
+            f"CREATE UNIQUE INDEX idx_{wt}_dwid ON {wt}(dw_id);"
+        )
 
     for ft in fact_tables:
         wt = fact_warehouse_names[ft["table_name"]]
@@ -479,36 +610,15 @@ def design_warehouse(
         name: f"fact_{name}" for name in fact_table_names
     }
 
-    fact_tables_data = []
-    for table_name in fact_table_names:
-        table = table_lookup.get(table_name)
-        if not table:
-            continue
-        measures = identify_measures(table)
-        dimensions = identify_dimensions(table)
-        foreign_keys = identify_foreign_keys(
-            table, dim_warehouse_names, fact_warehouse_names
-        )
-        ddl_pg = generate_fact_ddl_postgres(
-            table, fact_warehouse_names[table_name], source_schema
-        )
-        ddl_duck = generate_fact_ddl_duckdb(
-            table, fact_warehouse_names[table_name]
-        )
-        fact_tables_data.append({
-            "source_table": table_name,
-            "warehouse_table": fact_warehouse_names[table_name],
-            "fact_score": compute_fact_score(table, schema),
-            "measures": measures,
-            "dimensions": dimensions,
-            "foreign_keys": foreign_keys,
-            "primary_key": identify_primary_keys(table),
-            "row_count": table["row_count"],
-            "ddl_postgres": ddl_pg,
-            "ddl_duckdb": ddl_duck,
-            "ddl": ddl_pg,
-            "classification_reasons": build_fact_reasons(table, schema)
-        })
+    # Dimension natural keys are resolved first since fact tables need to
+    # know which dimensions have a trustworthy dedup key when deciding
+    # whether joins are meaningful; the actual JOIN itself only needs the
+    # dimension's warehouse table name, which dim_warehouse_names already has.
+    dimension_natural_keys = {
+        name: identify_primary_keys(table_lookup[name])
+        for name in dimension_table_names
+        if table_lookup.get(name)
+    }
 
     dimension_tables_data = []
     for table_name in dimension_table_names:
@@ -519,11 +629,12 @@ def design_warehouse(
         foreign_keys = identify_foreign_keys(
             table, dim_warehouse_names, fact_warehouse_names
         )
+        natural_key = dimension_natural_keys.get(table_name) or []
         ddl_pg = generate_dimension_ddl_postgres(
-            table, dim_warehouse_names[table_name], source_schema
+            table, dim_warehouse_names[table_name], source_schema, natural_key
         )
         ddl_duck = generate_dimension_ddl_duckdb(
-            table, dim_warehouse_names[table_name]
+            table, dim_warehouse_names[table_name], natural_key
         )
         dimension_tables_data.append({
             "source_table": table_name,
@@ -531,11 +642,49 @@ def design_warehouse(
             "attributes": attributes,
             "foreign_keys": foreign_keys,
             "primary_key": identify_primary_keys(table),
+            "natural_key": natural_key,
+            "surrogate_key": "dw_id",
+            "deduplicated": bool(natural_key),
             "row_count": table["row_count"],
             "ddl_postgres": ddl_pg,
             "ddl_duckdb": ddl_duck,
             "ddl": ddl_pg,
             "classification_reasons": build_dim_reasons(table, schema)
+        })
+
+    fact_tables_data = []
+    for table_name in fact_table_names:
+        table = table_lookup.get(table_name)
+        if not table:
+            continue
+        measures = identify_measures(table)
+        dimensions = identify_dimensions(table)
+        foreign_keys = identify_foreign_keys(
+            table, dim_warehouse_names, fact_warehouse_names
+        )
+        surrogate_key_joins = build_surrogate_key_joins(
+            foreign_keys, dim_warehouse_names
+        )
+        ddl_pg = generate_fact_ddl_postgres(
+            table, fact_warehouse_names[table_name], source_schema, surrogate_key_joins
+        )
+        ddl_duck = generate_fact_ddl_duckdb(
+            table, fact_warehouse_names[table_name], surrogate_key_joins
+        )
+        fact_tables_data.append({
+            "source_table": table_name,
+            "warehouse_table": fact_warehouse_names[table_name],
+            "fact_score": compute_fact_score(table, schema),
+            "measures": measures,
+            "dimensions": dimensions,
+            "foreign_keys": foreign_keys,
+            "surrogate_key_joins": surrogate_key_joins,
+            "primary_key": identify_primary_keys(table),
+            "row_count": table["row_count"],
+            "ddl_postgres": ddl_pg,
+            "ddl_duckdb": ddl_duck,
+            "ddl": ddl_pg,
+            "classification_reasons": build_fact_reasons(table, schema)
         })
 
     header_pg = (
